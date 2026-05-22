@@ -1,66 +1,222 @@
-# Spring Boot Blog API 从零开发计划
+# 博客文章 CRUD MVP 开发计划
 
 ## Summary
-- 新建独立项目 `blog-api`，不复用、不读取旧代码；目标是完成一个可本地运行的 REST 后端 blog。
-- 技术路线：Java 17+、Maven、Spring Boot 4.0.6、MySQL 8、MyBatis-Plus、Spring Security + JWT、Flyway、springdoc-openapi。
-- 第一版功能：管理员登录、文章 CRUD、分类、标签、Markdown 正文、匿名评论提交与审核、AI 总结接口预留。
-- 版本依据：Spring Boot 当前文档显示 4.0.6，且要求 Java SDK 17+；MyBatis-Plus 官方文档提供 Spring Boot 4 starter；springdoc v3 支持 Spring Boot 4。
+当前阶段只实现文章 CRUD，目标是跑通最小完整闭环：
 
-## Key Architecture
-- 项目包名使用 `com.qijx.blog`，分层为 `controller`、`service`、`mapper`、`entity`、`dto`、`security`、`config`、`common`、`ai`。
-- API 统一返回 `ApiResponse<T>`，分页统一返回 `PageResponse<T>`，异常统一由 `GlobalExceptionHandler` 转换为 JSON。
-- 数据库变更全部用 Flyway 管理，禁止手工改表后不写迁移脚本。
-- 认证采用管理员账号 + BCrypt 密码哈希 + JWT Bearer Token；`/api/admin/**` 需要登录，公开接口不需要登录。
-- AI 只做接口缝合：定义 `ArticleSummaryService` 接口和 `NoopArticleSummaryService` 默认实现，暂不接真实模型、不保存密钥、不引入 Spring AI。
+`HTTP 请求 -> ArticleController -> ArticleService -> ArticleRepository -> JdbcTemplate SQL -> MySQL articles 表`
 
-## Data And APIs
-| 模块 | 第一版设计 |
-| --- | --- |
-| 文章 | `articles`：标题、slug、Markdown 正文、人工摘要、AI 摘要、状态 `DRAFT/PUBLISHED`、分类、发布时间、浏览量、逻辑删除 |
-| 分类 | `categories`：名称、slug、描述、排序 |
-| 标签 | `tags` + `article_tags`：文章和标签多对多 |
-| 评论 | `comments`：文章 ID、昵称、邮箱、内容、状态 `PENDING/APPROVED/REJECTED`、审核时间；第一版不做楼中楼 |
-| 管理员 | `admin_users`：用户名、密码哈希、角色、启用状态 |
-| AI 预留 | 文章表保留 `ai_summary`、`ai_summary_status`、`ai_summary_updated_at`，接口先返回 `AI_PROVIDER_NOT_CONFIGURED` |
+不引入 common 层、统一响应、统一异常、错误码、权限、DTO/VO、Converter、复杂工具类。  
+数据库部分明确纳入主流程：自己写建表 SQL，Repository 里自己写 CRUD SQL。
 
-| API | 说明 |
-| --- | --- |
-| `POST /api/auth/login` | 管理员登录，返回 JWT |
-| `GET /api/articles` | 公开分页查询已发布文章 |
-| `GET /api/articles/{slug}` | 公开查看文章详情 |
-| `GET /api/categories`、`GET /api/tags` | 公开查询分类和标签 |
-| `GET /api/articles/{id}/comments` | 公开查询已审核评论 |
-| `POST /api/articles/{id}/comments` | 匿名提交评论，默认待审核 |
-| `POST /api/admin/articles`、`PUT /api/admin/articles/{id}`、`DELETE /api/admin/articles/{id}` | 管理文章 |
-| `POST /api/admin/articles/{id}/publish`、`POST /api/admin/articles/{id}/unpublish` | 发布和撤回文章 |
-| `POST /api/admin/comments/{id}/approve`、`POST /api/admin/comments/{id}/reject` | 审核评论 |
-| `POST /api/admin/articles/{id}/ai-summary` | AI 总结预留接口，第一版不实际生成 |
+## Key Changes
 
-## Development Phases
-1. 环境与脚手架：用 Spring Initializr 创建 Maven 项目，添加 Web MVC、Validation、Security、MySQL、MyBatis-Plus Boot4 starter、Flyway、springdoc；先跑通 `/actuator` 或简单健康接口。
-2. Spring Boot 基础学习：理解 `@SpringBootApplication`、Controller、Service、依赖注入、配置文件、profile、请求参数校验。
-3. 数据库初始化：建立 `blog` 数据库，编写 `V1__init_schema.sql`，创建核心表和索引，编写 `V2__seed_admin.sql` 初始化管理员。
-4. 通用基础设施：实现统一响应、统一异常、参数校验错误、分页模型、枚举状态、时间字段处理。
-5. 文章模块：先完成文章的 admin CRUD，再完成公开列表和详情；只允许公开接口读取 `PUBLISHED` 状态文章。
-6. 分类与标签：完成分类 CRUD、标签 CRUD、文章绑定标签；文章列表支持按分类、标签、关键词、发布时间筛选。
-7. 登录与权限：实现登录、JWT 生成与校验、Spring Security filter、管理员接口鉴权、公开接口放行。
-8. 评论模块：实现匿名评论提交、内容长度校验、邮箱不公开、管理员审核、公开接口只展示 `APPROVED` 评论。
-9. AI 预留层：增加 `ai` 包、`ArticleSummaryService` 接口、默认 noop 实现、AI 预留 endpoint、错误码和 OpenAPI 文档说明。
-10. 文档与手动验收：生成 Swagger UI，维护 README，写清楚本地 MySQL 配置、启动命令、默认管理员、主要 API 调用顺序。
-11. 测试补齐：补 controller、service、mapper 的关键测试；本地使用独立 `blog_test` schema，避免污染开发数据。
+### 1. 数据库与依赖
+新增或修改：
+
+- `pom.xml`
+  - 新增 `spring-boot-starter-jdbc`
+  - 保留 `spring-boot-starter-webmvc`
+  - 保留 `mysql-connector-j`
+
+- `src/main/resources/application.properties`
+  - 配置 MySQL 连接：
+    - `spring.datasource.url`
+    - `spring.datasource.username`
+    - `spring.datasource.password`
+    - `spring.datasource.driver-class-name`
+
+- `src/main/resources/schema.sql`
+  - 新增 `articles` 表建表 SQL
+
+作用：
+
+- 让项目能连接 MySQL。
+- 让 Repository 可以通过 `JdbcTemplate` 执行 SQL。
+- 让你练习真实数据库表设计和 SQL CRUD。
+
+为什么当前阶段需要：
+
+- 当前目标是完整最小闭环，数据库不能只靠框架自动生成。
+- `JdbcTemplate` 足够简单，能直接看到 SQL，不会引入 MyBatis/JPA 的额外概念。
+- `schema.sql` 是当前唯一必要的数据库初始化文件，不引入 Flyway/Liquibase。
+
+### 2. 新增文章模型
+新增：
+
+- `com.qijx.blog.entity.Article`
+
+作用：
+
+- 表示一篇文章。
+- 字段保持最小：
+  - `Long id`
+  - `String title`
+  - `String content`
+  - `LocalDateTime createdAt`
+  - `LocalDateTime updatedAt`
+
+为什么当前阶段需要：
+
+- Controller、Service、Repository 之间需要传递文章数据。
+- 这是 Java 代码和数据库 `articles` 表之间的最小数据结构。
+- 暂不加入分类、标签、作者、发布状态、浏览量、slug、软删除等字段。
+
+### 3. 新增 Repository 层
+新增：
+
+- `com.qijx.blog.repository.ArticleRepository`
+
+作用：
+
+- 使用 `JdbcTemplate` 手写 SQL 操作 `articles` 表。
+- 提供方法：
+  - `Article save(Article article)`
+  - `List<Article> findAll()`
+  - `Optional<Article> findById(Long id)`
+  - `int update(Long id, Article article)`
+  - `int deleteById(Long id)`
+
+为什么当前阶段需要：
+
+- Repository 是连接 Service 和 Database 的层。
+- 这里能练习真实 SQL：
+  - `INSERT`
+  - `SELECT`
+  - `UPDATE`
+  - `DELETE`
+- `findById` 返回 `Optional<Article>`，方便 Service 判断文章是否存在。
+- 不单独创建 RowMapper 类，结果映射逻辑直接放在 Repository 私有方法里，避免过度拆分。
+
+### 4. 新增 Service 层
+新增：
+
+- `com.qijx.blog.service.ArticleService`
+
+作用：
+
+- 封装文章 CRUD 主流程：
+  - 添加文章
+  - 查询文章列表
+  - 查询文章详情
+  - 修改文章
+  - 删除文章
+
+为什么当前阶段需要：
+
+- 让 Controller 不直接操作数据库。
+- 让项目形成清晰的三层结构。
+- 当前只处理必要业务逻辑：文章不存在时返回 404。
+
+兜底逻辑：
+
+- 查询、修改、删除文章时，如果 ID 不存在，抛出：
+  - `ResponseStatusException(HttpStatus.NOT_FOUND, "Article not found")`
+
+为什么这样处理：
+
+- 404 是 CRUD 当前阶段真实需要的行为。
+- 但暂不创建全局异常处理类，因为目前错误处理还没有重复复杂到需要抽象。
+
+### 5. 新增 Controller 层
+新增：
+
+- `com.qijx.blog.controller.ArticleController`
+
+作用：
+
+- 提供文章 CRUD 接口：
+  - `POST /api/articles` 添加文章
+  - `GET /api/articles` 查看文章列表
+  - `GET /api/articles/{id}` 查看文章详情
+  - `PUT /api/articles/{id}` 修改文章
+  - `DELETE /api/articles/{id}` 删除文章
+
+为什么当前阶段需要：
+
+- Controller 是 HTTP 请求入口。
+- 直接调用 Service。
+- 直接接收和返回 `Article`，不引入 DTO/VO。
+- 删除成功返回 `204 No Content`。
+
+### 6. 保留健康检查
+保留：
+
+- `com.qijx.blog.controller.HealthController`
+
+作用：
+
+- 通过 `GET /api/health` 确认应用启动成功。
+
+为什么当前阶段需要：
+
+- 对调试很有用。
+- 不影响文章 CRUD 主流程。
+
+## Database Design
+`articles` 表保持最小：
+
+```sql
+CREATE TABLE IF NOT EXISTS articles (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    title VARCHAR(200) NOT NULL,
+    content TEXT NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL
+);
+```
+
+当前不做：
+
+- 软删除字段
+- 发布状态字段
+- 分类字段
+- 标签表
+- 用户表
+- 索引优化
+- 数据库迁移版本管理
+
+## API Behavior
+请求示例：
+
+```json
+{
+  "title": "第一篇博客",
+  "content": "这是文章内容"
+}
+```
+
+接口行为：
+
+- `POST /api/articles`：插入数据库，返回新增后的文章。
+- `GET /api/articles`：查询全部文章，按 `id DESC` 或 `created_at DESC` 排序。
+- `GET /api/articles/{id}`：查询单篇文章，不存在返回 404。
+- `PUT /api/articles/{id}`：更新标题和内容，不存在返回 404。
+- `DELETE /api/articles/{id}`：物理删除文章，不存在返回 404，成功返回 204。
 
 ## Test Plan
-- 启动测试：应用能在 `local` profile 下连接 MySQL 并自动执行 Flyway。
-- 认证测试：错误密码失败，正确密码返回 token，无 token 访问 admin API 返回 401。
-- 文章测试：草稿不会出现在公开列表，发布后可通过 slug 访问，删除后不可访问。
-- 评论测试：匿名提交后状态为 `PENDING`，审核通过后才会公开展示，拒绝后不展示。
-- AI 预留测试：调用 AI 总结接口返回稳定错误码 `AI_PROVIDER_NOT_CONFIGURED`，不破坏文章数据。
-- API 文档测试：Swagger UI 可打开，公开和管理员接口分组清晰，管理员接口标明 Bearer Token。
+手动测试优先：
+
+1. 创建 MySQL 数据库，例如 `blog_api`。
+2. 启动 Spring Boot 项目，确认能连接数据库。
+3. 访问 `GET /api/health`，确认服务运行。
+4. 调用 `POST /api/articles`，确认数据库插入记录。
+5. 调用 `GET /api/articles`，确认能查到列表。
+6. 调用 `GET /api/articles/{id}`，确认能查到详情。
+7. 调用 `PUT /api/articles/{id}`，确认数据库记录被更新。
+8. 调用 `DELETE /api/articles/{id}`，确认数据库记录被删除。
+9. 再次查询已删除 ID，确认返回 404。
 
 ## Assumptions
-- 第一版只做后端 REST API，不做前端页面。
-- 第一版使用 MyBatis-Plus，不使用 JPA；SQL 复杂时允许写 XML mapper。
-- 第一版文章正文保存 Markdown 原文，不在后端渲染 HTML。
-- 第一版评论不做回复、点赞、垃圾评论识别和验证码。
-- 第一版本地开发优先，不做 Docker、云服务器、对象存储和真实 AI 接入。
-- 参考链接：[Spring Boot 4.0.6](https://spring.io/spring-boot)、[Spring Boot starters](https://docs.spring.io/spring-boot/4.0/reference/using/build-systems.html)、[MyBatis-Plus install](https://baomidou.com/en/getting-started/install/)、[springdoc v3](https://springdoc.org/v4/)、[JJWT Maven Central](https://central.sonatype.com/artifact/io.jsonwebtoken/jjwt-api/versions)。
+- 当前阶段使用 MySQL。
+- 当前阶段使用 `JdbcTemplate`，不使用 JPA，不使用 MyBatis。
+- 当前阶段自己写 SQL，Repository 负责 SQL 执行。
+- 当前阶段 Controller 可以直接接收和返回 `Article`。
+- 当前阶段不做统一响应体和统一异常处理。
+- 当前阶段删除文章使用物理删除。
+
+## TODO Later
+- 数据量变多后再加分页。
+- 请求和返回结构复杂后再引入 DTO/VO。
+- 错误处理重复后再加统一异常处理。
+- 数据库结构稳定后再引入 Flyway/Liquibase。
+- 需要用户身份后再加登录和权限。
