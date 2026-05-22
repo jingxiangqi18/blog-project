@@ -21,11 +21,11 @@ public class Article {
         return content;
     }
 
-    public LocalDateTime getCreateAt(){
+    public LocalDateTime getCreatedAt(){
         return createdAt;
     }
 
-    public LocalDateTime getUpdateAt(){
+    public LocalDateTime getUpdatedAt(){
         return updatedAt;
     }
 
