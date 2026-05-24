@@ -2,9 +2,17 @@ package com.qijx.blog.entity;
 
 import java.time.LocalDateTime;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
 public class Article {
     private Long id;
+
+    @NotBlank
+    @Size(max = 200)
     private String title;
+
+    @NotBlank
     private String content;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

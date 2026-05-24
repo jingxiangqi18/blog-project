@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 import com.qijx.blog.entity.Article;
 import com.qijx.blog.repository.ArticleRepository;
@@ -32,5 +33,19 @@ public class ArticleService {
 
     public Article getArticle(Long id){
         return articleRepository.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Article not found"));
+    }
+
+    public Article updateArticle(Long id, Article article){
+        getArticle(id);
+
+        article.setUpdatedAt(LocalDateTime.now());
+        articleRepository.update(id, article);
+
+        return getArticle(id);
+    }
+
+    public void deleteArticle(Long id){
+        getArticle(id);
+        articleRepository.deleteById(id);
     }
 }

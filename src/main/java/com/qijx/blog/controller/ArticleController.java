@@ -4,8 +4,10 @@ import java.util.List;
 
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PathVariable;
 
@@ -35,6 +37,16 @@ public class ArticleController {
 
     @GetMapping("/{id}")
     public Article getArticle(@PathVariable Long id){
-        return ArticleService.getArticle(id);
+        return articleService.getArticle(id);
+    }
+
+    @PutMapping("/{id}")
+    public Article updateArticle(@PathVariable Long id, @RequestBody Article article){
+        return articleService.updateArticle(id, article);
+    }
+
+    @DeleteMapping("/{id}")
+    public void deleteArticle(@PathVariable Long id){
+        articleService.deleteArticle(id);
     }
 }

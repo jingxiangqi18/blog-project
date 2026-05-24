@@ -1,9 +1,12 @@
 package com.qijx.blog.repository;
 
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -80,5 +83,48 @@ public class ArticleRepository {
                 """;
 
         List<Article> articles = jdbcTemplate.query(sql, this::mapRow, id);
+
+        if(articles.isEmpty()){
+            return Optional.empty();
+        }
+
+        return Optional.of(articles.get(0));
+    }
+
+    private Article mapRow(ResultSet rs, int rowNum) throws SQLException{
+        Article article = new Article();
+
+        article.setId(rs.getLong("id"));
+        article.setTitle(rs.getString("title"));
+        article.setContent(rs.getString("content"));
+        article.setCreatedAt(rs.getTimestamp("created_at").toLocalDateTime());
+        article.setUpdatedAt(rs.getTimestamp("updated_at").toLocalDateTime());
+
+        return article;
+    }
+
+    public int update(Long id, Article article){
+        String sql = """
+                UPDATE articles
+                SET title = ?, content = ?, updated_at = ?
+                WHERE id = ?
+                """;
+
+        return jdbcTemplate.update(
+            sql,
+            article.getTitle(),
+            article.getContent(),
+            article.getUpdatedAt(),
+            id
+        );
+    }
+
+    public int deleteById(Long id){
+        String sql = """
+                DELETE FROM articles
+                WHERE id = ?
+                """;
+
+        return jdbcTemplate.update(sql, id);
     }
 }
