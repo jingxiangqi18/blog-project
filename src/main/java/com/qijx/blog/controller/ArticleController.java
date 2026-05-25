@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import com.qijx.blog.entity.Article;
 import com.qijx.blog.service.ArticleService;
 
+import jakarta.validation.Valid;
+
 @RestController
 @RequestMapping("/api/articles")
 
@@ -26,7 +28,7 @@ public class ArticleController {
     }
 
     @PostMapping
-    public Article createArticle(@RequestBody Article article){
+    public Article createArticle(@Valid @RequestBody Article article){
         return articleService.createArticle(article);
     }
 
@@ -41,7 +43,7 @@ public class ArticleController {
     }
 
     @PutMapping("/{id}")
-    public Article updateArticle(@PathVariable Long id, @RequestBody Article article){
+    public Article updateArticle(@PathVariable Long id, @Valid @RequestBody Article article){
         return articleService.updateArticle(id, article);
     }
 
