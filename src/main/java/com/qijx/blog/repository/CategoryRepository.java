@@ -1,8 +1,11 @@
 package com.qijx.blog.repository;
 
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -50,7 +53,7 @@ public class CategoryRepository {
     public List<Category> findAll(){
         String sql = """
                 SELECT * 
-                FROM Category
+                FROM categories
                 ORDER BY id DESC
                 """;
 
@@ -62,5 +65,53 @@ public class CategoryRepository {
 
             return category;
         });
+    }
+
+    public Optional<Category> findById(Long id){
+        String sql = """
+                SELECT id, name
+                FROM categories
+                WHERE id = ?
+                """;
+
+        List<Category> categories = jdbcTemplate.query(sql, this::mapRow, id);
+
+        if(categories.isEmpty()){
+            return Optional.empty();
+        }
+
+        return Optional.of(categories.get(0));
+    }
+
+    private Category mapRow(ResultSet rs, int rowNum) throws SQLException{
+        Category category = new Category();
+
+        category.setId(rs.getLong("id"));
+        category.setName(rs.getString("name"));
+
+        return category;
+    }
+
+    public int update(Long id, Category category){
+        String sql = """
+                UPDATE categories
+                SET name = ?
+                WHERE id = ?
+                """;
+
+        return jdbcTemplate.update(
+            sql,
+            category.getName(),
+            id
+        );
+    }
+
+    public int deleteById(Long id){
+        String sql = """
+                DELETE FROM categories
+                WHERE id = ?
+                """;
+
+        return jdbcTemplate.update(sql, id);
     }
 }

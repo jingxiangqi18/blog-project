@@ -3,6 +3,7 @@ package com.qijx.blog.entity;
 import java.time.LocalDateTime;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 public class Article {
@@ -14,6 +15,12 @@ public class Article {
 
     @NotBlank
     private String content;
+
+    @NotNull
+    private Long categoryId;
+    
+    private String categoryName;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -27,6 +34,14 @@ public class Article {
 
     public String getContent(){
         return content;
+    }
+
+    public Long getCategoryId(){
+        return categoryId;
+    }
+
+    public String getCategoryName(){
+        return categoryName;
     }
 
     public LocalDateTime getCreatedAt(){
@@ -47,6 +62,14 @@ public class Article {
 
     public void setContent(String content){
         this.content = content;
+    }
+
+    public void setCategoryId(Long categoryId){
+        this.categoryId = categoryId;
+    }
+
+    public void setCategoryName(String categoryName){
+        this.categoryName = categoryName;
     }
 
     public void setCreatedAt(LocalDateTime createdAt){

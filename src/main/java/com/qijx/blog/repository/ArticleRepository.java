@@ -27,8 +27,8 @@ public class ArticleRepository {
 
     public Article save(Article article){
         String sql = """
-                INSERT INTO articles(title, content, created_at, updated_at)
-                VALUES(?, ?, ?, ?)
+                INSERT INTO articles(title, content, category_id, created_at, updated_at)
+                VALUES(?, ?, ?, ?, ?)
                 """;
         
         KeyHolder keyHolder = new GeneratedKeyHolder();
@@ -41,8 +41,9 @@ public class ArticleRepository {
 
             preparedStatement.setString(1, article.getTitle());
             preparedStatement.setString(2, article.getContent());
-            preparedStatement.setTimestamp(3, Timestamp.valueOf(article.getCreatedAt()));
-            preparedStatement.setTimestamp(4, Timestamp.valueOf(article.getUpdatedAt()));
+            preparedStatement.setLong(3, article.getCategoryId());
+            preparedStatement.setTimestamp(4, Timestamp.valueOf(article.getCreatedAt()));
+            preparedStatement.setTimestamp(5, Timestamp.valueOf(article.getUpdatedAt()));
 
             return preparedStatement;
         }, keyHolder);
@@ -58,9 +59,10 @@ public class ArticleRepository {
 
     public List<Article> findAll(){
         String sql = """
-                SELECT id, title, content, created_at, updated_at 
+                SELECT articles.id, articles.title, articles.content, articles.category_id, categories.name AS categories_name, articles.created_at, articles.updated_at 
                 FROM articles
-                ORDER BY id DESC
+                LEFT JOIN categories ON articles.category_id = categories.id
+                ORDER BY articles.id DESC
                 """;
 
         return jdbcTemplate.query(sql, (rs, rowNum) -> {
@@ -69,6 +71,8 @@ public class ArticleRepository {
             article.setId(rs.getLong("id"));
             article.setTitle(rs.getString("title"));
             article.setContent(rs.getString("content"));
+            article.setCategoryId(rs.getLong("category_id"));
+            article.setCategoryName(rs.getString("category_name"));
             article.setCreatedAt(rs.getTimestamp("created_at").toLocalDateTime());
             article.setUpdatedAt(rs.getTimestamp("updated_at").toLocalDateTime());
 
@@ -78,9 +82,10 @@ public class ArticleRepository {
 
     public Optional<Article> findById(Long id){
         String sql = """
-                SELECT id, title, content, created_at, updated_at
+                SELECT articles.id, articles.title, articles.content, articles.category_id, categories.name AS category_name, articles.created_at, articles.updated_at
                 FROM articles
-                WHERE id = ?
+                LEFT JOIN categories ON articles.category_id = categories.id
+                WHERE articles.id = ?
                 """;
 
         List<Article> articles = jdbcTemplate.query(sql, this::mapRow, id);
@@ -98,6 +103,8 @@ public class ArticleRepository {
         article.setId(rs.getLong("id"));
         article.setTitle(rs.getString("title"));
         article.setContent(rs.getString("content"));
+        article.setCategoryId(rs.getLong("category_id"));
+        article.setCategoryName(rs.getString("category_name"));
         article.setCreatedAt(rs.getTimestamp("created_at").toLocalDateTime());
         article.setUpdatedAt(rs.getTimestamp("updated_at").toLocalDateTime());
 
@@ -107,7 +114,7 @@ public class ArticleRepository {
     public int update(Long id, Article article){
         String sql = """
                 UPDATE articles
-                SET title = ?, content = ?, updated_at = ?
+                SET title = ?, content = ?, category_id = ?, updated_at = ?
                 WHERE id = ?
                 """;
 
@@ -115,6 +122,7 @@ public class ArticleRepository {
             sql,
             article.getTitle(),
             article.getContent(),
+            article.getCategoryId(),
             article.getUpdatedAt(),
             id
         );
