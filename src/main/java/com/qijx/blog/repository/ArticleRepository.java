@@ -59,7 +59,7 @@ public class ArticleRepository {
 
     public List<Article> findAll(){
         String sql = """
-                SELECT articles.id, articles.title, articles.content, articles.category_id, categories.name AS categories_name, articles.created_at, articles.updated_at 
+                SELECT articles.id, articles.title, articles.content, articles.category_id, categories.name AS category_name, articles.created_at, articles.updated_at 
                 FROM articles
                 LEFT JOIN categories ON articles.category_id = categories.id
                 ORDER BY articles.id DESC
