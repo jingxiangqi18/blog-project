@@ -136,4 +136,16 @@ public class ArticleRepository {
 
         return jdbcTemplate.update(sql, id);
     }
+
+    public List<Article> findByCategoryId(Long categoryId){
+        String sql = """
+                SELECT articles.id, articles.title, articles.content, articles.category_id, categories.name AS category_name, articles.created_at, articles.updated_at
+                FROM articles
+                LEFT JOIN categories ON articles.category_id = categories.id
+                WHERE articles.category_id = ?
+                ORDER BY articles.id DESC
+                """;
+
+        return jdbcTemplate.query(sql, this::mapRow, categoryId);
+    }
 }

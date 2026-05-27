@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.qijx.blog.entity.Article;
 import com.qijx.blog.entity.Category;
 import com.qijx.blog.service.CategoryService;
 
@@ -49,5 +50,10 @@ public class CategoryController {
     @DeleteMapping("/{id}")
     public void deleteCategory(@PathVariable Long id){
         categoryService.deleteCategory(id);
+    }
+
+    @GetMapping("/{id}/articles")
+    public List<Article> listArticlesByCategory(@PathVariable Long id){
+        return categoryService.listArticlesByCategory(id);
     }
 }
