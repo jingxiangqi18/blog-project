@@ -3,13 +3,9 @@ package com.qijx.blog.entity;
 import java.time.LocalDateTime;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 
 public class Comment {
-    @NotNull
     private Long id;
-
-    @NotNull
     private Long articleId;
     
     @NotBlank
@@ -42,7 +38,7 @@ public class Comment {
         this.id = id;
     }
 
-    public void setArticlId(Long articleId){
+    public void setArticleId(Long articleId){
         this.articleId = articleId;
     }
 
