@@ -81,10 +81,10 @@ public class CommentRepository {
         String sql = """
                 SELECT id, article_id, content, created_at, updated_at
                 FROM comments
-                WHERE id = ?
+                WHERE id = ? AND article_id = ?
                 """;
 
-        List<Comment> comments = jdbcTemplate.query(sql, this::mapRow, id);
+        List<Comment> comments = jdbcTemplate.query(sql, this::mapRow, id, articleId);
 
         if(comments.isEmpty()){
             return Optional.empty();

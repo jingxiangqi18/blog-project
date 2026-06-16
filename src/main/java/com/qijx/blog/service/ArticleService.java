@@ -14,12 +14,15 @@ import com.qijx.blog.repository.ArticleRepository;
 public class ArticleService {
     
     private final ArticleRepository articleRepository;
+    private final CategoryService categoryService;
 
-    public ArticleService(ArticleRepository articleRepository){
+    public ArticleService(ArticleRepository articleRepository, CategoryService categoryService){
         this.articleRepository = articleRepository;
+        this.categoryService = categoryService;
     }
 
     public Article createArticle(Article article){
+        categoryService.getCategory(article.getCategoryId());
         LocalDateTime now = LocalDateTime.now();
         article.setCreatedAt(now);
         article.setUpdatedAt(now);
@@ -37,6 +40,7 @@ public class ArticleService {
 
     public Article updateArticle(Long id, Article article){
         getArticle(id);
+        categoryService.getCategory(article.getCategoryId());
 
         article.setUpdatedAt(LocalDateTime.now());
         articleRepository.update(id, article);

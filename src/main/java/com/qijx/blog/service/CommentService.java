@@ -33,6 +33,7 @@ public class CommentService {
     }
 
     public List<Comment> listCommentsByArticleId(Long articleId){
+        articleService.getArticle(articleId);
         return commentRepository.findByArticleId(articleId);
     }
 
