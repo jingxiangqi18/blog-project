@@ -1,0 +1,4 @@
+interface:
+  display_name: "Naive UI Components"
+  short_description: "Compose polished Naive UI screens"
+  default_prompt: "Use -ui-component-skill to build polished Vue pages with Naive UI components."

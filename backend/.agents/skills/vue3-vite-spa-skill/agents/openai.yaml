@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vue 3 Vite SPA"
+  short_description: "Build separated Vue 3 Vite frontends"
+  default_prompt: "Use -vite-spa-skill to create a Vue 3 + Vite SPA frontend for this Spring Boot API."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Playwright UI Review"
+  short_description: "Review UI in browser screenshots"
+  default_prompt: "Use -ui-review-skill to inspect the frontend in a real browser and refine the UI."
