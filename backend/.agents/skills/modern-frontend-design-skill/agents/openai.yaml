@@ -1,0 +1,4 @@
+interface:
+  display_name: "Modern Frontend Design"
+  short_description: "Apply restrained modern product design"
+  default_prompt: "Use -frontend-design-skill to make this frontend feel modern, clean, and portfolio-ready."

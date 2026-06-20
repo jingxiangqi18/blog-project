@@ -1,0 +1,4 @@
+interface:
+  display_name: "Design Polish Pass"
+  short_description: "Polish completed frontend screens"
+  default_prompt: "Use -polish-pass-skill to polish spacing, typography, hierarchy, and responsive layout."

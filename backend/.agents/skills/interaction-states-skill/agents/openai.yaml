@@ -1,0 +1,4 @@
+interface:
+  display_name: "Interaction States"
+  short_description: "Add product-grade frontend states"
+  default_prompt: "Use -states-skill to add loading, empty, error, validation, and responsive states."
