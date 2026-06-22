@@ -89,6 +89,9 @@ Before adding any new abstraction, framework, common utility, global mechanism, 
 
 If it is not necessary now, do not implement it. Mention it as a TODO at the end instead.
 
+When explaining or implementing backend code, follow a request-driven flow that is easy for a beginner to understand: start from the frontend request, show how it is received by the Controller, then explain why the Controller calls the Service for business logic, and why the Service calls the Repository for database access. Write code in this order when possible, instead of introducing layers or abstractions before they are needed by the current requirement.
+
+
 ## Explanation style
 
 When helping me develop backend features, please use this style:

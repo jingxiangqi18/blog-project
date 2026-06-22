@@ -8,3 +8,6 @@ frontend/.env.*
 .idea/
 .vscode/
 .DS_Store
+
+# Database file
+blog.session.sql
