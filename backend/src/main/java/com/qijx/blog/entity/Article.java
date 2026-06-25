@@ -19,10 +19,8 @@ public class Article {
     @NotNull
     private Long categoryId;
 
-    @NotNull
     private Long authorId;
 
-    @NotBlank
     private String authorName;
     
     private String categoryName;
@@ -85,7 +83,6 @@ public class Article {
     public void setCategoryName(String categoryName){
         this.categoryName = categoryName;
     }
-
     public void setAuthorId(Long authorId){
         this.authorId = authorId;
     }
