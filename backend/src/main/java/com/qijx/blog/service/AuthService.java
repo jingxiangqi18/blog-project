@@ -14,9 +14,11 @@ import com.qijx.blog.entity.User;
 @Service
 public class AuthService {
     private final UserRepository userRepository;
+    private final JwtService jwtService;
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
-    public AuthService(UserRepository userRepository){
+    public AuthService(JwtService jwtService, UserRepository userRepository){
+        this.jwtService = jwtService;
         this.userRepository = userRepository;
     }
 
@@ -31,7 +33,9 @@ public class AuthService {
             throw invalidCredentials();
         }
 
-        return new LoginResponse(user.getId(), user.getUsername(), user.getRole());
+        String token = jwtService.generateToken(user);
+
+        return new LoginResponse(token, user.getId(), user.getUsername(), user.getRole());
     }
 
     private ResponseStatusException invalidCredentials(){
