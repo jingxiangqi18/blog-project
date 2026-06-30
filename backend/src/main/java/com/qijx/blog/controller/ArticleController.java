@@ -52,12 +52,19 @@ public class ArticleController {
     }
 
     @PutMapping("/{id}")
-    public Article updateArticle(@PathVariable Long id, @Valid @RequestBody Article article){
-        return articleService.updateArticle(id, article);
+    public Article updateArticle(
+        @PathVariable Long id,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+        @Valid @RequestBody Article article
+    ){
+        return articleService.updateArticle(id, article, authorizationHeader);
     }
 
     @DeleteMapping("/{id}")
-    public void deleteArticle(@PathVariable Long id){
-        articleService.deleteArticle(id);
+    public void deleteArticle(
+        @PathVariable Long id,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+        ){
+        articleService.deleteArticle(id, authorizationHeader);
     }
 }

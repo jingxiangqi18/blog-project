@@ -5,7 +5,11 @@ import java.util.Date;
 import javax.crypto.SecretKey;
 
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -39,5 +43,23 @@ public class JwtService {
                 .expiration(expiration)
                 .signWith(secretKey)
                 .compact();
+    }
+
+    public Claims parseAuthorizationHeader(String authorizationHeader){
+        if(authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")){
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing token");
+        }
+
+        String token = authorizationHeader.substring(7);
+
+        try{
+            return Jwts.parser()
+                .verifyWith(secretKey)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+        } catch(JwtException | IllegalArgumentException e){
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid token");
+        }
     }
 }

@@ -12,25 +12,37 @@ import com.qijx.blog.entity.Article;
 import com.qijx.blog.repository.ArticleRepository;
 import com.qijx.blog.repository.CommentRepository;
 
+import io.jsonwebtoken.Claims;
+
 @Service
 public class ArticleService {
     
     private final ArticleRepository articleRepository;
     private final CommentRepository commentRepository;
     private final CategoryService categoryService;
+    private final JwtService jwtService;
 
     public ArticleService(
         ArticleRepository articleRepository,
         CommentRepository commentRepository,
-        CategoryService categoryService
+        CategoryService categoryService,
+        JwtService jwtService
     ){
         this.articleRepository = articleRepository;
         this.commentRepository = commentRepository;
         this.categoryService = categoryService;
+        this.jwtService = jwtService;
     }
 
-    public Article createArticle(Article article){
+    public Article createArticle(Article article, String authorizationHeader){
+        Claims claims = jwtService.parseAuthorizationHeader(authorizationHeader);
+
+        Long userId = claims.get("userId", Long.class);
+
         categoryService.getCategory(article.getCategoryId());
+
+        article.setAuthorId(userId);
+
         LocalDateTime now = LocalDateTime.now();
         article.setCreatedAt(now);
         article.setUpdatedAt(now);
@@ -66,8 +78,12 @@ public class ArticleService {
         return articleRepository.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Article not found"));
     }
 
-    public Article updateArticle(Long id, Article article){
-        getArticle(id);
+    public Article updateArticle(Long id, Article article, String authorizationHeader){
+        Claims claims = jwtService.parseAuthorizationHeader(authorizationHeader);
+        Article existingArticle = getArticle(id);
+
+        checkArticlePermission(existingArticle, claims);
+
         categoryService.getCategory(article.getCategoryId());
 
         article.setUpdatedAt(LocalDateTime.now());
@@ -77,9 +93,25 @@ public class ArticleService {
     }
 
     @Transactional
-    public void deleteArticle(Long id){
-        getArticle(id);
+    public void deleteArticle(Long id, String authorizationHeader){
+        Claims claims = jwtService.parseAuthorizationHeader(authorizationHeader);
+        Article existingArticle = getArticle(id);
+
+        checkArticlePermission(existingArticle, claims);
+
         commentRepository.deleteByArticleId(id);
         articleRepository.deleteById(id);
+    }
+
+    private void checkArticlePermission(Article article, Claims claims){
+        Long currentUserId = claims.get("userId", Long.class);
+        String role = claims.get("role", String.class);
+
+        boolean isAdmin = "ADMIN".equals(role);
+        boolean isAuthor = (article.getAuthorId() != null) && (article.getAuthorId().equals(currentUserId));
+
+        if(!isAdmin && !isAuthor){
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No Permission to operate current article");
+        }
     }
 }

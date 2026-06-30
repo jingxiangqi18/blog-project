@@ -45,6 +45,34 @@
       </el-select>
     </div>
 
+    <div class="panel insight-panel">
+      <div class="filter-summary">
+        <span class="summary-icon">
+          <el-icon><DataAnalysis /></el-icon>
+        </span>
+        <div>
+          <strong>{{ activeFilterTitle }}</strong>
+          <span>{{ activeFilterMeta }}</span>
+        </div>
+      </div>
+      <div class="category-rail">
+        <button class="category-filter" :class="{ active: !categoryId }" type="button" @click="selectCategory('')">
+          全部
+        </button>
+        <button
+          v-for="category in categories"
+          :key="category.id"
+          class="category-filter"
+          :class="{ active: categoryId === String(category.id) }"
+          type="button"
+          @click="selectCategory(String(category.id))"
+        >
+          {{ category.name }}
+        </button>
+      </div>
+      <el-button :icon="Close" :disabled="!hasFilters" @click="resetFilters">清空筛选</el-button>
+    </div>
+
     <div v-if="loading" class="article-grid">
       <div v-for="item in 4" :key="item" class="article-card skeleton-card">
         <el-skeleton :rows="5" animated />
@@ -93,18 +121,20 @@
         </div>
         <div class="card-actions">
           <el-button text @click="$router.push(`/articles/${article.id}`)">阅读</el-button>
-          <el-button text type="primary" :icon="ArrowRight" @click="$router.push(`/articles/${article.id}/edit`)">
-            编辑
-          </el-button>
-          <el-button
-            text
-            type="danger"
-            :icon="Delete"
-            :loading="deletingArticleId === article.id"
-            @click="removeArticle(article)"
-          >
-            删除
-          </el-button>
+          <template v-if="canManageResource(article)">
+            <el-button text type="primary" :icon="ArrowRight" @click="$router.push(`/articles/${article.id}/edit`)">
+              编辑
+            </el-button>
+            <el-button
+              text
+              type="danger"
+              :icon="Delete"
+              :loading="deletingArticleId === article.id"
+              @click="removeArticle(article)"
+            >
+              删除
+            </el-button>
+          </template>
         </div>
       </article>
     </div>
@@ -125,8 +155,9 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowRight, Calendar, Delete, Refresh, Search, Stopwatch } from '@element-plus/icons-vue'
+import { ArrowRight, Calendar, Close, DataAnalysis, Delete, Refresh, Search, Stopwatch } from '@element-plus/icons-vue'
 import { deleteArticle, listArticles, listCategories } from '../api/blog'
+import { canManageResource } from '../utils/permissions'
 
 const articles = ref([])
 const categories = ref([])
@@ -159,6 +190,33 @@ const sortedArticles = computed(() => {
 const totalWords = computed(() => {
   return articles.value.reduce((sum, article) => sum + contentLength(article.content), 0)
 })
+const activeCategory = computed(() => {
+  return categories.value.find((category) => String(category.id) === categoryId.value) || null
+})
+const hasFilters = computed(() => Boolean(keyword.value.trim() || categoryId.value))
+const activeFilterTitle = computed(() => {
+  if (keyword.value.trim() && activeCategory.value) {
+    return `${activeCategory.value.name} 中搜索“${keyword.value.trim()}”`
+  }
+
+  if (keyword.value.trim()) {
+    return `搜索“${keyword.value.trim()}”`
+  }
+
+  if (activeCategory.value) {
+    return activeCategory.value.name
+  }
+
+  return '全部内容'
+})
+const activeFilterMeta = computed(() => {
+  const sortMap = {
+    'updated-desc': '最近更新',
+    'updated-asc': '最早更新',
+    'title-asc': '标题 A-Z',
+  }
+  return `${pageState.totalElements} 篇文章 · ${sortMap[sortMode.value] || '最近更新'}`
+})
 
 function excerpt(content) {
   if (!content) {
@@ -179,6 +237,15 @@ function readingMinutes(content) {
 function articleTone(article) {
   const source = Number(article.categoryId || article.id || 0)
   return { '--tone': tones[Math.abs(source) % tones.length] }
+}
+
+function selectCategory(id) {
+  categoryId.value = id
+}
+
+function resetFilters() {
+  keyword.value = ''
+  categoryId.value = ''
 }
 
 function formatDate(value) {
@@ -243,6 +310,10 @@ async function reloadArticles() {
 }
 
 async function removeArticle(article) {
+  if (!canManageResource(article)) {
+    return
+  }
+
   try {
     await ElMessageBox.confirm(`确定删除文章「${article.title}」？`, '删除文章', {
       type: 'warning',

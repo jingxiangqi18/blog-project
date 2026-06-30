@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -27,8 +28,11 @@ public class CommentController {
     }
     
     @PostMapping
-    public Comment createComment(@PathVariable Long articleId, @Valid @RequestBody Comment comment){
-        return commentService.createComment(articleId, comment);
+    public Comment createComment(
+        @PathVariable Long articleId,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+        @Valid @RequestBody Comment comment){
+        return commentService.createComment(articleId, comment, authorizationHeader);
     }
 
     @GetMapping
@@ -37,12 +41,19 @@ public class CommentController {
     }
 
     @PutMapping("/{id}")
-    public Comment updateComment(@PathVariable Long articleId, @PathVariable Long id, @Valid @RequestBody Comment comment){
-        return commentService.updateComment(articleId, id, comment);
+    public Comment updateComment(
+        @PathVariable Long articleId,
+        @PathVariable Long id,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+        @Valid @RequestBody Comment comment){
+        return commentService.updateComment(articleId, id, comment, authorizationHeader);
     }
 
     @DeleteMapping("/{id}")
-    public void deleteComment(@PathVariable Long articleId, @PathVariable Long id){
-        commentService.deleteComment(articleId, id);
+    public void deleteComment(
+        @PathVariable Long articleId,
+        @PathVariable Long id,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader){
+        commentService.deleteComment(articleId, id, authorizationHeader);
     }
 }

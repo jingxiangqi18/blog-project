@@ -45,7 +45,7 @@
               <span>ID {{ category.id }}</span>
             </div>
           </div>
-          <div class="category-actions">
+          <div v-if="canManageResource(category)" class="category-actions">
             <el-button text type="primary" :icon="Edit" @click.stop="startEdit(category)">重命名</el-button>
             <el-button text type="danger" :icon="Delete" @click.stop="remove(category)">删除</el-button>
           </div>
@@ -97,6 +97,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Edit, Plus, Refresh } from '@element-plus/icons-vue'
 import { createCategory, deleteCategory, listArticlesByCategory, listCategories, updateCategory } from '../api/blog'
+import { canManageResource } from '../utils/permissions'
 
 const categories = ref([])
 const categoryArticles = ref([])
@@ -195,12 +196,22 @@ async function submit() {
 }
 
 function startEdit(category) {
+  if (!canManageResource(category)) {
+    return
+  }
+
   editing.visible = true
   editing.id = category.id
   editing.name = category.name
 }
 
 async function saveEdit() {
+  const category = categories.value.find((item) => item.id === editing.id)
+  if (!canManageResource(category)) {
+    editing.visible = false
+    return
+  }
+
   const name = editing.name.trim()
   if (!name) {
     ElMessage.warning('请输入分类名称')
@@ -219,6 +230,10 @@ async function saveEdit() {
 }
 
 async function remove(category) {
+  if (!canManageResource(category)) {
+    return
+  }
+
   try {
     await ElMessageBox.confirm(`确定删除分类「${category.name}」？`, '删除分类', {
       type: 'warning',

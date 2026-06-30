@@ -25,8 +25,8 @@ public class CommentRepository {
 
     public Comment save(Long articleId, Comment comment){
         String sql = """
-                INSERT INTO comments(article_id, content, created_at, updated_at)
-                VALUES(?, ?, ?, ?)
+                INSERT INTO comments(article_id, author_id, content, created_at, updated_at)
+                VALUES(?, ?, ?, ?, ?)
                 """;
 
         KeyHolder keyHolder = new GeneratedKeyHolder();
@@ -38,9 +38,10 @@ public class CommentRepository {
             );
 
             preparedStatement.setLong(1, articleId);
-            preparedStatement.setString(2, comment.getContent());
-            preparedStatement.setTimestamp(3, Timestamp.valueOf(comment.getCreatedAt()));
-            preparedStatement.setTimestamp(4, Timestamp.valueOf(comment.getUpdatedAt()));
+            preparedStatement.setLong(2, comment.getAuthorId());
+            preparedStatement.setString(3, comment.getContent());
+            preparedStatement.setTimestamp(4, Timestamp.valueOf(comment.getCreatedAt()));
+            preparedStatement.setTimestamp(5, Timestamp.valueOf(comment.getUpdatedAt()));
 
             return preparedStatement;
         }, keyHolder);
@@ -56,10 +57,17 @@ public class CommentRepository {
 
     public List<Comment> findByArticleId(Long articleId){
         String sql = """
-                SELECT id, article_id, content, created_at, updated_at
+                SELECT comments.id,
+                       comments.article_id,
+                       comments.content,
+                       comments.author_id,
+                       users.username AS author_name,
+                       comments.created_at,
+                       comments.updated_at
                 FROM comments
-                WHERE article_id = ?
-                ORDER BY id DESC
+                LEFT JOIN users ON comments.author_id = users.id
+                WHERE comments.article_id = ?
+                ORDER BY comments.id DESC
                 """;
 
         return jdbcTemplate.query(sql, this::mapRow, articleId);
@@ -68,9 +76,13 @@ public class CommentRepository {
     private Comment mapRow(ResultSet rs, int rowNum) throws SQLException{
         Comment comment = new Comment();
 
+        Long authorId = rs.getLong("author_id");
+
         comment.setId(rs.getLong("id"));
         comment.setArticleId(rs.getLong("article_id"));
         comment.setContent(rs.getString("content"));
+        comment.setAuthorId(rs.wasNull() ? null : authorId);
+        comment.setAuthorName(rs.getString("author_name"));
         comment.setCreatedAt(rs.getTimestamp("created_at").toLocalDateTime());
         comment.setUpdatedAt(rs.getTimestamp("updated_at").toLocalDateTime());
 
@@ -79,9 +91,16 @@ public class CommentRepository {
 
     public Optional<Comment> findByIdAndArticleId(Long articleId, Long id){
         String sql = """
-                SELECT id, article_id, content, created_at, updated_at
+                SELECT comments.id,
+                       comments.article_id,
+                       comments.content,
+                       comments.author_id,
+                       users.username AS author_name,
+                       comments.created_at,
+                       comments.updated_at
                 FROM comments
-                WHERE id = ? AND article_id = ?
+                LEFT JOIN users ON comments.author_id = users.id
+                WHERE comments.id = ? AND comments.article_id = ?
                 """;
 
         List<Comment> comments = jdbcTemplate.query(sql, this::mapRow, id, articleId);

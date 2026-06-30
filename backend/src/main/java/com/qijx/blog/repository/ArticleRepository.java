@@ -28,8 +28,8 @@ public class ArticleRepository {
 
     public Article save(Article article){
         String sql = """
-                INSERT INTO articles(title, content, category_id, created_at, updated_at)
-                VALUES(?, ?, ?, ?, ?)
+                INSERT INTO articles(title, content, category_id, author_id, created_at, updated_at)
+                VALUES(?, ?, ?, ?, ?, ?)
                 """;
         
         KeyHolder keyHolder = new GeneratedKeyHolder();
@@ -43,8 +43,9 @@ public class ArticleRepository {
             preparedStatement.setString(1, article.getTitle());
             preparedStatement.setString(2, article.getContent());
             preparedStatement.setLong(3, article.getCategoryId());
-            preparedStatement.setTimestamp(4, Timestamp.valueOf(article.getCreatedAt()));
-            preparedStatement.setTimestamp(5, Timestamp.valueOf(article.getUpdatedAt()));
+            preparedStatement.setLong(4, article.getAuthorId());
+            preparedStatement.setTimestamp(5, Timestamp.valueOf(article.getCreatedAt()));
+            preparedStatement.setTimestamp(6, Timestamp.valueOf(article.getUpdatedAt()));
 
             return preparedStatement;
         }, keyHolder);
@@ -94,9 +95,18 @@ public class ArticleRepository {
         int offset = (page - 1) * size;
 
         String dataSql = """
-                SELECT articles.id, articles.title, articles.content, articles.category_id, categories.name AS category_name, articles.created_at, articles.updated_at
+                SELECT articles.id,
+                       articles.title,
+                       articles.content,
+                       articles.category_id,
+                       articles.author_id,
+                       users.username AS author_name,
+                       categories.name AS category_name,
+                       articles.created_at,
+                       articles.updated_at
                 FROM articles
                 LEFT JOIN categories ON articles.category_id = categories.id
+                LEFT JOIN users ON articles.author_id = users.id
                 """ + whereSql + """
                         ORDER BY articles.updated_at DESC, articles.id DESC
                         LIMIT ? OFFSET ?
@@ -116,9 +126,18 @@ public class ArticleRepository {
 
     public Optional<Article> findById(Long id){
         String sql = """
-                SELECT articles.id, articles.title, articles.content, articles.category_id, categories.name AS category_name, articles.created_at, articles.updated_at
+                SELECT articles.id,
+                       articles.title,
+                       articles.content,
+                       articles.category_id,
+                       articles.author_id,
+                       users.username AS author_name,
+                       categories.name AS category_name,
+                       articles.created_at,
+                       articles.updated_at
                 FROM articles
                 LEFT JOIN categories ON articles.category_id = categories.id
+                LEFT JOIN users ON articles.author_id = users.id
                 WHERE articles.id = ?
                 """;
 
@@ -139,6 +158,9 @@ public class ArticleRepository {
         article.setContent(rs.getString("content"));
         Long categoryId = rs.getLong("category_id");
         article.setCategoryId(rs.wasNull() ? null : categoryId);
+        Long authorId = rs.getLong("author_id");
+        article.setAuthorId(rs.wasNull() ? null : authorId);
+        article.setAuthorName(rs.getString("author_name"));
         article.setCategoryName(rs.getString("category_name"));
         article.setCreatedAt(rs.getTimestamp("created_at").toLocalDateTime());
         article.setUpdatedAt(rs.getTimestamp("updated_at").toLocalDateTime());
@@ -184,9 +206,18 @@ public class ArticleRepository {
 
     public List<Article> findByCategoryId(Long categoryId){
         String sql = """
-                SELECT articles.id, articles.title, articles.content, articles.category_id, categories.name AS category_name, articles.created_at, articles.updated_at
+                SELECT articles.id,
+                       articles.title,
+                       articles.content,
+                       articles.category_id,
+                       articles.author_id,
+                       users.username AS author_name,
+                       categories.name AS category_name,
+                       articles.created_at,
+                       articles.updated_at
                 FROM articles
                 LEFT JOIN categories ON articles.category_id = categories.id
+                LEFT JOIN users ON articles.author_id = users.id
                 WHERE articles.category_id = ?
                 ORDER BY articles.id DESC
                 """;

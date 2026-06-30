@@ -32,20 +32,29 @@
           </div>
           <div class="reader-actions">
             <el-button :icon="Back" @click="$router.push('/articles')">返回</el-button>
-            <el-button type="primary" :icon="EditPen" @click="$router.push(`/articles/${article.id}/edit`)">
+            <el-button
+              v-if="canManageArticle"
+              type="primary"
+              :icon="EditPen"
+              @click="$router.push(`/articles/${article.id}/edit`)"
+            >
               编辑
             </el-button>
-            <el-button type="danger" :icon="Delete" :loading="deletingArticle" @click="removeArticle">
+            <el-button
+              v-if="canManageArticle"
+              type="danger"
+              :icon="Delete"
+              :loading="deletingArticle"
+              @click="removeArticle"
+            >
               删除
             </el-button>
           </div>
         </div>
 
-        <div class="article-body">
-          <p v-for="(paragraph, index) in paragraphs" :key="index">
-            {{ paragraph }}
-          </p>
-          <p v-if="paragraphs.length === 0" class="empty-copy">暂无正文内容</p>
+        <div v-if="wordCount > 0" class="article-body markdown-body" v-html="renderedArticle"></div>
+        <div v-else class="article-body">
+          <p class="empty-copy">暂无正文内容</p>
         </div>
       </article>
 
@@ -80,24 +89,49 @@
         <el-empty v-else-if="comments.length === 0" description="暂无评论" />
         <div v-else class="comment-list">
           <div v-for="comment in comments" :key="comment.id" class="comment-item">
-            <template v-if="editingComment.id === comment.id">
-              <el-input
-                v-model="editingComment.content"
-                type="textarea"
-                :rows="3"
-                maxlength="500"
-                show-word-limit
-              />
-            </template>
-            <p v-else>{{ comment.content }}</p>
-            <div>
-              <span class="time-chip comment-time">
-                <el-icon><Calendar /></el-icon>
-                {{ comment.updatedAt && comment.updatedAt !== comment.createdAt ? '编辑于' : '发布于' }}
-                {{ formatDate(comment.updatedAt || comment.createdAt) }}
-              </span>
-              <div class="comment-actions">
-                <template v-if="editingComment.id === comment.id">
+            <span class="comment-avatar">{{ commentAuthorInitial(comment) }}</span>
+            <div class="comment-main">
+              <div class="comment-head">
+                <div class="comment-meta">
+                  <strong class="comment-author">{{ commentAuthorName(comment) }}</strong>
+                  <span class="comment-time">
+                    {{ comment.updatedAt && comment.updatedAt !== comment.createdAt ? '编辑于' : '发布于' }}
+                    {{ formatDate(comment.updatedAt || comment.createdAt) }}
+                  </span>
+                </div>
+                <el-dropdown
+                  v-if="canManageResource(comment) && editingComment.id !== comment.id"
+                  trigger="click"
+                  placement="bottom-end"
+                  @command="handleCommentCommand(comment, $event)"
+                >
+                  <button class="comment-more-button" type="button" aria-label="评论操作" title="评论操作">
+                    <el-icon><MoreFilled /></el-icon>
+                  </button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="edit" :icon="EditPen">编辑评论内容</el-dropdown-item>
+                      <el-dropdown-item command="delete" :icon="Delete" class="danger-dropdown-item">
+                        删除评论
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+              </div>
+
+              <template v-if="editingComment.id === comment.id">
+                <el-input
+                  v-model="editingComment.content"
+                  type="textarea"
+                  :rows="3"
+                  maxlength="500"
+                  show-word-limit
+                />
+              </template>
+              <p v-else class="comment-content">{{ comment.content }}</p>
+
+              <div v-if="editingComment.id === comment.id" class="comment-footer">
+                <div class="comment-actions">
                   <el-button text :disabled="editingComment.saving" @click="cancelCommentEdit">取消</el-button>
                   <el-button
                     text
@@ -107,21 +141,7 @@
                   >
                     保存
                   </el-button>
-                </template>
-                <template v-else>
-                  <el-button text type="primary" :icon="EditPen" @click="startCommentEdit(comment)">
-                    编辑
-                  </el-button>
-                  <el-button
-                    text
-                    type="danger"
-                    :icon="Delete"
-                    :loading="deletingCommentId === comment.id"
-                    @click="removeComment(comment)"
-                  >
-                    删除
-                  </el-button>
-                </template>
+                </div>
               </div>
             </div>
           </div>
@@ -135,8 +155,10 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { Back, Calendar, ChatLineRound, Delete, EditPen, Reading, Refresh, Stopwatch } from '@element-plus/icons-vue'
+import { Back, Calendar, ChatLineRound, Delete, EditPen, MoreFilled, Reading, Refresh, Stopwatch } from '@element-plus/icons-vue'
 import { createComment, deleteArticle, deleteComment, getArticle, listComments, updateComment } from '../api/blog'
+import { canManageResource } from '../utils/permissions'
+import { renderMarkdown } from '../utils/markdown'
 
 const props = defineProps({
   id: {
@@ -162,13 +184,12 @@ const editingComment = reactive({
   saving: false,
 })
 
-const paragraphs = computed(() => {
-  return (article.value?.content || '').split(/\n+/).filter(Boolean)
-})
 const wordCount = computed(() => (article.value?.content || '').trim().length)
 const readingMinutes = computed(() => {
   return wordCount.value ? Math.max(1, Math.ceil(wordCount.value / 500)) : 0
 })
+const renderedArticle = computed(() => renderMarkdown(article.value?.content || ''))
+const canManageArticle = computed(() => canManageResource(article.value))
 
 function formatDate(value) {
   if (!value) {
@@ -181,6 +202,14 @@ function formatDate(value) {
   const hour = String(date.getHours()).padStart(2, '0')
   const minute = String(date.getMinutes()).padStart(2, '0')
   return `${year}年${month}月${day}日 ${hour}:${minute}`
+}
+
+function commentAuthorName(comment) {
+  return comment.authorName || comment.username || (comment.authorId ? `用户 ${comment.authorId}` : '匿名用户')
+}
+
+function commentAuthorInitial(comment) {
+  return commentAuthorName(comment).trim().slice(0, 1).toUpperCase()
 }
 
 async function loadArticle() {
@@ -229,6 +258,10 @@ async function submitComment() {
 }
 
 async function removeArticle() {
+  if (!canManageArticle.value) {
+    return
+  }
+
   try {
     await ElMessageBox.confirm(`确定删除文章「${article.value.title}」？`, '删除文章', {
       type: 'warning',
@@ -251,6 +284,10 @@ async function removeArticle() {
 }
 
 function startCommentEdit(comment) {
+  if (!canManageResource(comment)) {
+    return
+  }
+
   editingComment.id = comment.id
   editingComment.content = comment.content
 }
@@ -260,7 +297,23 @@ function cancelCommentEdit() {
   editingComment.content = ''
 }
 
+function handleCommentCommand(comment, command) {
+  if (command === 'edit') {
+    startCommentEdit(comment)
+    return
+  }
+
+  if (command === 'delete') {
+    removeComment(comment)
+  }
+}
+
 async function saveCommentEdit(comment) {
+  if (!canManageResource(comment)) {
+    cancelCommentEdit()
+    return
+  }
+
   const content = editingComment.content.trim()
   if (!content) {
     ElMessage.warning('请输入评论内容')
@@ -279,6 +332,10 @@ async function saveCommentEdit(comment) {
 }
 
 async function removeComment(comment) {
+  if (!canManageResource(comment)) {
+    return
+  }
+
   try {
     await ElMessageBox.confirm(`确定删除这条评论？\n${comment.content.slice(0, 32)}`, '删除评论', {
       type: 'warning',
