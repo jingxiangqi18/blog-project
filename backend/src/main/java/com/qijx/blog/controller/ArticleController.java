@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.PathVariable;
 
 import com.qijx.blog.dto.PageResponse;
@@ -28,8 +29,11 @@ public class ArticleController {
     }
 
     @PostMapping
-    public Article createArticle(@Valid @RequestBody Article article){
-        return articleService.createArticle(article);
+    public Article createArticle(
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+        @Valid @RequestBody Article article
+    ){
+        return articleService.createArticle(article, authorizationHeader);
     }
 
     @GetMapping

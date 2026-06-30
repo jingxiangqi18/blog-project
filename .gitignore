@@ -11,3 +11,6 @@ frontend/.env.*
 
 # Database file
 blog.session.sql
+
+# properties
+backend/src/main/resources/application.properties
