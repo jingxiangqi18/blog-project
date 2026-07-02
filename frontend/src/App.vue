@@ -45,7 +45,8 @@
           </div>
 
           <div class="topbar-actions">
-            <el-dropdown v-if="isSignedIn" trigger="click" placement="bottom-end" @command="handleUserCommand">
+            <span v-if="sessionState.checking" class="auth-checking">校验登录中</span>
+            <el-dropdown v-else-if="isSignedIn" trigger="click" placement="bottom-end" @command="handleUserCommand">
               <button class="user-pill" type="button">
                 <span class="user-avatar">{{ userInitial }}</span>
                 <span>
@@ -111,11 +112,11 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ArrowDown, CollectionTag, Document, EditPen, Lock, SwitchButton, User } from '@element-plus/icons-vue'
-import { login } from './api/blog'
-import { clearSession, sessionState, setSession } from './state/session'
+import { getCurrentUser, login } from './api/blog'
+import { clearSession, finishSessionCheck, sessionState, setSession, signedIn } from './state/session'
 
 const loginVisible = ref(false)
 const loggingIn = ref(false)
@@ -130,7 +131,7 @@ const loginRules = {
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
 }
 
-const isSignedIn = computed(() => Boolean(sessionState.token))
+const isSignedIn = signedIn
 const userInitial = computed(() => {
   return (sessionState.user?.username || 'U').trim().slice(0, 1).toUpperCase()
 })
@@ -166,4 +167,25 @@ function handleUserCommand(command) {
     logout()
   }
 }
+
+async function checkCurrentSession() {
+  if (!sessionState.token) {
+    finishSessionCheck()
+    return
+  }
+
+  try {
+    const user = await getCurrentUser()
+    setSession({
+      token: sessionState.token,
+      id: user.id,
+      username: user.username,
+      role: user.role,
+    })
+  } catch {
+    clearSession()
+  }
+}
+
+onMounted(checkCurrentSession)
 </script>

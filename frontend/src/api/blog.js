@@ -4,6 +4,10 @@ export function login(payload) {
   return http.post('/auth/login', payload)
 }
 
+export function getCurrentUser() {
+  return http.get('/auth/me')
+}
+
 export function listArticles(params = {}) {
   return http.get('/articles', { params: { size: 9, ...params } })
 }

@@ -34,6 +34,48 @@ public class UserRepository {
         return Optional.of(users.get(0));
     }
 
+    public Optional<User> findById(Long id){
+        String sql = """
+                SELECT id, username, password_hash, role, enabled, created_at, updated_at
+                FROM users
+                WHERE id = ?
+                """;
+
+        List<User> users = jdbcTemplate.query(sql, this::mapRow, id);
+
+        if(users.isEmpty()){
+            return Optional.empty();
+        }
+
+        return Optional.of(users.get(0));
+    }
+
+    public User save(User user){
+        String sql = """
+                INSERT INTO users(
+                       username,
+                       password_hash,
+                       role,
+                       enabled,
+                       created_at,
+                       updated_at
+                       )
+                VALUES(?, ?, ?, ?, ?, ?)
+                """;
+
+        jdbcTemplate.update(
+            sql,
+            user.getUsername(),
+            user.getPasswordHash(),
+            user.getRole().name(),
+            user.isEnabled(),
+            user.getCreatedAt(),
+            user.getUpdatedAt()
+        );
+
+        return findByUserName(user.getUsername()).orElseThrow(() -> new IllegalStateException("User save failed"));
+    }
+
     private User mapRow(ResultSet rs, int rowNum) throws SQLException{
         User user = new User();
 

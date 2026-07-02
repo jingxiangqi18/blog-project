@@ -5,6 +5,7 @@ const STORAGE_KEY = 'blog-studio-session'
 const state = reactive({
   token: '',
   user: null,
+  checking: false,
 })
 
 function readStoredSession() {
@@ -34,6 +35,7 @@ export function restoreSession() {
 
   state.token = stored.token
   state.user = stored.user || null
+  state.checking = true
 }
 
 export function setSession(payload) {
@@ -43,13 +45,19 @@ export function setSession(payload) {
     username: payload.username,
     role: payload.role,
   }
+  state.checking = false
   writeStoredSession({ token: state.token, user: state.user })
 }
 
 export function clearSession() {
   state.token = ''
   state.user = null
+  state.checking = false
   writeStoredSession(null)
+}
+
+export function finishSessionCheck() {
+  state.checking = false
 }
 
 export function getAuthToken() {
@@ -57,6 +65,6 @@ export function getAuthToken() {
 }
 
 export const sessionState = state
-export const signedIn = computed(() => Boolean(state.token))
+export const signedIn = computed(() => Boolean(state.token) && !state.checking)
 
 restoreSession()

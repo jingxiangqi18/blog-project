@@ -10,19 +10,27 @@ import org.springframework.http.HttpStatus;
 import com.qijx.blog.entity.Article;
 import com.qijx.blog.entity.Category;
 import com.qijx.blog.repository.CategoryRepository;
-import com.qijx.blog.repository.ArticleRepository;
 
+import io.jsonwebtoken.Claims;
+
+import com.qijx.blog.repository.ArticleRepository;
+import com.qijx.blog.service.JwtService;
 @Service
 public class CategoryService {
     private final CategoryRepository categoryRepository;
     private final ArticleRepository articleRepository;
+    private final JwtService jwtService;
 
-    public CategoryService(CategoryRepository categoryRepository, ArticleRepository articleRepository){
+    public CategoryService(CategoryRepository categoryRepository, ArticleRepository articleRepository, JwtService jwtService){
         this.categoryRepository = categoryRepository;
         this.articleRepository = articleRepository;
+        this.jwtService = jwtService;
     }
 
-    public Category createCategory(Category category){
+    public Category createCategory(Category category, String authorizationHeader){
+        Claims claims = jwtService.parseAuthorizationHeader(authorizationHeader);
+        checkAdmin(claims);
+
         return categoryRepository.save(category);
     }
 
@@ -34,7 +42,10 @@ public class CategoryService {
         return categoryRepository.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Category not found"));
     }
 
-    public Category updateCategory(Long id, Category category){
+    public Category updateCategory(Long id, Category category, String authorizationHeader){
+        Claims claims = jwtService.parseAuthorizationHeader(authorizationHeader);
+        checkAdmin(claims);
+
         getCategory(id);
 
         categoryRepository.update(id, category);
@@ -43,7 +54,10 @@ public class CategoryService {
     }
 
     @Transactional
-    public void deleteCategory(Long id){
+    public void deleteCategory(Long id, String authorizationHeader){
+        Claims claims = jwtService.parseAuthorizationHeader(authorizationHeader);
+        checkAdmin(claims);
+
         getCategory(id);
         articleRepository.clearCategoryId(id);
         categoryRepository.deleteById(id);
@@ -52,5 +66,13 @@ public class CategoryService {
     public List<Article> listArticlesByCategory(Long id){
         getCategory(id);
         return articleRepository.findByCategoryId(id);
+    }
+
+    private void checkAdmin(Claims claims){
+        String role = claims.get("role", String.class);
+
+        if(!"ADMIN".equals(role)){
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admin can manage categories");
+        }
     }
 }

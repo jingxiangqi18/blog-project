@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -28,8 +29,11 @@ public class CategoryController {
     }
 
     @PostMapping
-    public Category createCategory(@Valid @RequestBody Category category){
-        return categoryService.createCategory(category);
+    public Category createCategory(
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+        @Valid @RequestBody Category category
+    ){
+        return categoryService.createCategory(category, authorizationHeader);
     }
 
     @GetMapping
@@ -43,13 +47,20 @@ public class CategoryController {
     }
 
     @PutMapping("/{id}")
-    public Category updateCategory(@PathVariable Long id, @Valid @RequestBody Category category){
-        return categoryService.updateCategory(id, category);
+    public Category updateCategory(
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+        @PathVariable Long id,
+        @Valid @RequestBody Category category
+    ){
+        return categoryService.updateCategory(id, category, authorizationHeader);
     }
 
     @DeleteMapping("/{id}")
-    public void deleteCategory(@PathVariable Long id){
-        categoryService.deleteCategory(id);
+    public void deleteCategory(
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+        @PathVariable Long id
+    ){
+        categoryService.deleteCategory(id, authorizationHeader);
     }
 
     @GetMapping("/{id}/articles")

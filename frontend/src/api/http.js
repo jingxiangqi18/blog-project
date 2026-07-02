@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
-import { getAuthToken } from '../state/session'
+import { clearSession, getAuthToken } from '../state/session'
 
 const http = axios.create({
   baseURL: '/api',
@@ -24,6 +24,11 @@ http.interceptors.response.use(
   (response) => response.data,
   (error) => {
     const status = error.response?.status
+
+    if (status === 401) {
+      clearSession()
+    }
+
     const message =
       status >= 500
         ? '后端接口返回 500，请检查后端服务日志'

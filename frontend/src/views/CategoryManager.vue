@@ -12,7 +12,7 @@
     </div>
 
     <div class="panel category-panel">
-      <el-form class="category-form" :model="form" @submit.prevent>
+      <el-form v-if="canManageCategories" class="category-form" :model="form" @submit.prevent>
         <el-input v-model="form.name" maxlength="100" show-word-limit placeholder="新的分类名称" />
         <el-button type="primary" :icon="Plus" :loading="saving" :disabled="!form.name.trim()" @click="submit">
           添加分类
@@ -45,7 +45,7 @@
               <span>ID {{ category.id }}</span>
             </div>
           </div>
-          <div v-if="canManageResource(category)" class="category-actions">
+          <div v-if="canManageCategories" class="category-actions">
             <el-button text type="primary" :icon="Edit" @click.stop="startEdit(category)">重命名</el-button>
             <el-button text type="danger" :icon="Delete" @click.stop="remove(category)">删除</el-button>
           </div>
@@ -80,7 +80,7 @@
       </div>
     </section>
 
-    <el-dialog v-model="editing.visible" title="重命名分类" width="420px">
+    <el-dialog v-if="canManageCategories" v-model="editing.visible" title="重命名分类" width="420px">
       <el-input v-model="editing.name" maxlength="100" show-word-limit />
       <template #footer>
         <el-button @click="editing.visible = false">取消</el-button>
@@ -97,7 +97,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Edit, Plus, Refresh } from '@element-plus/icons-vue'
 import { createCategory, deleteCategory, listArticlesByCategory, listCategories, updateCategory } from '../api/blog'
-import { canManageResource } from '../utils/permissions'
+import { isAdmin } from '../utils/permissions'
 
 const categories = ref([])
 const categoryArticles = ref([])
@@ -119,6 +119,7 @@ const editing = reactive({
 const selectedCategory = computed(() => {
   return categories.value.find((category) => category.id === selectedCategoryId.value) || null
 })
+const canManageCategories = computed(() => isAdmin())
 
 function categoryTone(category) {
   const source = Number(category.id || 0)
@@ -177,6 +178,10 @@ async function selectCategory(category) {
 }
 
 async function submit() {
+  if (!canManageCategories.value) {
+    return
+  }
+
   const name = form.name.trim()
   if (!name) {
     ElMessage.warning('请输入分类名称')
@@ -196,7 +201,7 @@ async function submit() {
 }
 
 function startEdit(category) {
-  if (!canManageResource(category)) {
+  if (!canManageCategories.value) {
     return
   }
 
@@ -206,8 +211,7 @@ function startEdit(category) {
 }
 
 async function saveEdit() {
-  const category = categories.value.find((item) => item.id === editing.id)
-  if (!canManageResource(category)) {
+  if (!canManageCategories.value) {
     editing.visible = false
     return
   }
@@ -230,7 +234,7 @@ async function saveEdit() {
 }
 
 async function remove(category) {
-  if (!canManageResource(category)) {
+  if (!canManageCategories.value) {
     return
   }
 
