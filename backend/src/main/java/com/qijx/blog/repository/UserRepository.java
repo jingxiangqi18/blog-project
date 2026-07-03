@@ -92,6 +92,16 @@ public class UserRepository {
         return jdbcTemplate.query(sql, this::mapRow);
     }
 
+    public int updateEnabled(Long id, boolean enabled){
+        String sql = """
+                UPDATE users
+                SET enabled = ?, updated_at = NOW()
+                WHERE id = ?
+                """;
+
+        return jdbcTemplate.update(sql, enabled, id);
+    }
+
     private User mapRow(ResultSet rs, int rowNum) throws SQLException{
         User user = new User();
 

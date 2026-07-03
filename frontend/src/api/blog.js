@@ -16,6 +16,10 @@ export function listUsers() {
   return http.get('/users')
 }
 
+export function updateUserEnabled(id, payload) {
+  return http.patch(`/users/${id}/enabled`, payload)
+}
+
 export function listArticles(params = {}) {
   return http.get('/articles', { params: { size: 9, ...params } })
 }

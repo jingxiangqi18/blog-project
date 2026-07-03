@@ -1482,21 +1482,81 @@ a {
   padding: 22px;
 }
 
-.user-list {
+.user-panel-head {
   display: grid;
+  grid-template-columns: minmax(180px, 0.45fr) minmax(0, 1fr);
+  align-items: end;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.user-panel-head h3 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.user-toolbar {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  align-items: center;
+  justify-content: end;
   gap: 10px;
 }
 
-.user-row {
+.user-search {
+  width: 100%;
+}
+
+.user-table {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 12px;
-  min-height: 72px;
-  padding: 14px;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius);
+  background: var(--surface);
+  --user-role-col: 180px;
+  --user-status-col: 180px;
+  --user-action-col: 220px;
+}
+
+.user-table-row {
+  display: grid;
+  grid-template-columns:
+    minmax(220px, 1fr)
+    var(--user-role-col)
+    var(--user-status-col)
+    var(--user-action-col);
+  align-items: center;
+  gap: 14px;
+  min-height: 70px;
+  padding: 14px 18px;
+}
+
+.user-table-row + .user-table-row {
+  border-top: 1px solid var(--line);
+}
+
+.user-table-row.disabled {
+  background: #fbfafa;
+}
+
+.user-table-head {
+  min-height: 44px;
   background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.user-table-head span:not(:first-child) {
+  justify-self: center;
+}
+
+.user-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
 }
 
 .user-row-main {
@@ -1537,6 +1597,8 @@ a {
   font-size: 12px;
   font-weight: 850;
   white-space: nowrap;
+  justify-self: center;
+  min-width: 132px;
 }
 
 .role-chip.admin {
@@ -1549,6 +1611,22 @@ a {
   border-color: rgba(179, 69, 69, 0.24);
   background: #fff2f2;
   color: var(--danger);
+}
+
+.user-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+.self-lock {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
 }
 
 .category-article-list {
@@ -1741,7 +1819,9 @@ a {
   .insight-panel,
   .category-form,
   .markdown-toolbar,
-  .comment-form {
+  .comment-form,
+  .user-panel-head,
+  .user-toolbar {
     grid-template-columns: 1fr;
   }
 
@@ -1771,14 +1851,23 @@ a {
   }
 
   .pagination-panel,
-  .category-article-item,
-  .user-row {
+  .category-article-item {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .user-row {
-    grid-template-columns: 42px minmax(0, 1fr);
+  .user-table-head {
+    display: none;
+  }
+
+  .user-table-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .user-cell,
+  .user-actions {
+    grid-column: 1 / -1;
   }
 
   .role-chip,
