@@ -76,6 +76,22 @@ public class UserRepository {
         return findByUserName(user.getUsername()).orElseThrow(() -> new IllegalStateException("User save failed"));
     }
 
+    public List<User> findAll(){
+        String sql = """
+                SELECT id,
+                       username,
+                       password_hash,
+                       role,
+                       enabled,
+                       created_at,
+                       updated_at
+                From users
+                ORDER BY id DESC
+                """;
+
+        return jdbcTemplate.query(sql, this::mapRow);
+    }
+
     private User mapRow(ResultSet rs, int rowNum) throws SQLException{
         User user = new User();
 

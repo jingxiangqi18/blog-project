@@ -4,8 +4,16 @@ export function login(payload) {
   return http.post('/auth/login', payload)
 }
 
+export function register(payload) {
+  return http.post('/auth/register', payload)
+}
+
 export function getCurrentUser() {
   return http.get('/auth/me')
+}
+
+export function listUsers() {
+  return http.get('/users')
 }
 
 export function listArticles(params = {}) {
