@@ -173,7 +173,7 @@ const pageState = reactive({
   totalElements: 0,
   totalPages: 1,
 })
-const tones = ['#0f766e', '#3f6f9f', '#a04442', '#7c5c14', '#6d5bd0']
+const tones = ['#2563eb', '#475569', '#1e40af', '#64748b', '#334155']
 
 const sortedArticles = computed(() => {
   return [...articles.value].sort((a, b) => {
