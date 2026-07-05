@@ -102,6 +102,16 @@ public class UserRepository {
         return jdbcTemplate.update(sql, enabled, id);
     }
 
+    public int updatePasswordHash(Long currentUserId, String newPasswordHash){
+        String sql = """
+                UPDATE users
+                SET password_hash = ?, updated_at = NOW()
+                WHERE id = ?
+                """;
+
+        return jdbcTemplate.update(sql, newPasswordHash, currentUserId);
+    }
+
     private User mapRow(ResultSet rs, int rowNum) throws SQLException{
         User user = new User();
 

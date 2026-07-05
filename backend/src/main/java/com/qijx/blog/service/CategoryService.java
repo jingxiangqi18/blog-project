@@ -14,7 +14,6 @@ import com.qijx.blog.repository.CategoryRepository;
 import io.jsonwebtoken.Claims;
 
 import com.qijx.blog.repository.ArticleRepository;
-import com.qijx.blog.service.JwtService;
 
 @Service
 public class CategoryService {

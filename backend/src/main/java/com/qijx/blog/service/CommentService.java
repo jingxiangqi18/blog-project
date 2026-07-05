@@ -9,7 +9,6 @@ import org.springframework.http.HttpStatus;
 
 import com.qijx.blog.entity.Comment;
 import com.qijx.blog.repository.CommentRepository;
-import com.qijx.blog.service.JwtService;
 
 import io.jsonwebtoken.Claims;
 
