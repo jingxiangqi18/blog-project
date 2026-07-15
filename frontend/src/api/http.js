@@ -2,8 +2,10 @@ import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import { clearSession, getAuthToken } from '../state/session'
 
+const apiOrigin = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '')
+
 const http = axios.create({
-  baseURL: '/api',
+  baseURL: apiOrigin ? `${apiOrigin}/api` : '/api',
   timeout: 12000,
   headers: {
     'Content-Type': 'application/json',
