@@ -1,0 +1,13 @@
+target/
+.git/
+.github/
+.idea/
+.vscode/
+.agents/
+*.iml
+*.log
+.env
+.env.*
+README.md
+api-test-commands.sh
+blog_api_mysql.session.sql
