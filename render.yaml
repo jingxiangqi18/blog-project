@@ -1,6 +1,7 @@
 services:
   - type: web
     name: blog-api
+    rootDir: backend
     runtime: docker
     plan: free
     dockerfilePath: ./backend/Dockerfile
