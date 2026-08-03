@@ -20,6 +20,45 @@ const markdown = new MarkdownIt({
   },
 })
 
+const colorSpanOpenPattern = /^<span\s+style\s*=\s*["'“”‘’]\s*color\s*:\s*(#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8}))\s*;?\s*["'“”‘’]\s*>/i
+const colorSpanClosePattern = /^<\/span\s*>/i
+
+function renderSafeColorSpan(state, silent) {
+  const source = state.src.slice(state.pos)
+  const openingTag = source.match(colorSpanOpenPattern)
+
+  if (openingTag) {
+    if (!silent) {
+      const token = state.push('safe_color_span_open', 'span', 1)
+      token.meta = { color: openingTag[1] }
+      state.safeColorSpanDepth = (state.safeColorSpanDepth || 0) + 1
+    }
+
+    state.pos += openingTag[0].length
+    return true
+  }
+
+  const closingTag = source.match(colorSpanClosePattern)
+
+  if (!closingTag || !state.safeColorSpanDepth) {
+    return false
+  }
+
+  if (!silent) {
+    state.push('safe_color_span_close', 'span', -1)
+    state.safeColorSpanDepth -= 1
+  }
+
+  state.pos += closingTag[0].length
+  return true
+}
+
+markdown.inline.ruler.before('text', 'safe_color_span', renderSafeColorSpan)
+markdown.renderer.rules.safe_color_span_open = (tokens, index) => {
+  return `<span class="markdown-color-text" style="color: ${tokens[index].meta.color}">`
+}
+markdown.renderer.rules.safe_color_span_close = () => '</span>'
+
 const defaultImageRenderer = markdown.renderer.rules.image
 const defaultLinkOpenRenderer = markdown.renderer.rules.link_open
 
