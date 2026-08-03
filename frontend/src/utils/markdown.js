@@ -94,3 +94,13 @@ markdown.renderer.rules.link_open = (tokens, index, options, env, self) => {
 export function renderMarkdown(content) {
   return markdown.render(content || '')
 }
+
+export function markdownToPlainText(content) {
+  if (!content) {
+    return ''
+  }
+
+  const container = document.createElement('div')
+  container.innerHTML = renderMarkdown(content)
+  return (container.textContent || '').replace(/\s+/g, ' ').trim()
+}

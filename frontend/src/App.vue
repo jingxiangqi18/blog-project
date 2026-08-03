@@ -8,7 +8,7 @@
           </span>
           <span class="brand-copy">
             <strong>Blog Studio</strong>
-            <small>内容管理台</small>
+            <small>独立创作空间</small>
           </span>
         </RouterLink>
 
@@ -44,7 +44,7 @@
       <div class="workspace">
         <header class="app-header">
           <div class="topbar-copy">
-            <span>Dashboard</span>
+            <span>Journal</span>
             <strong>创作与归档</strong>
           </div>
 
@@ -85,7 +85,11 @@
         </header>
 
         <main class="app-main">
-          <RouterView />
+          <RouterView v-slot="{ Component, route }">
+            <Transition name="page-shift" mode="out-in">
+              <component :is="Component" :key="route.path" />
+            </Transition>
+          </RouterView>
         </main>
       </div>
 

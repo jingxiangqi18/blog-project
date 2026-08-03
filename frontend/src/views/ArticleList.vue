@@ -2,7 +2,7 @@
   <section class="page-stack">
     <div class="hero-panel article-hero">
       <div class="hero-copy">
-        <p class="section-kicker">Articles</p>
+        <p class="section-kicker">Studio Journal</p>
         <h2>内容工作台</h2>
       </div>
       <div class="hero-side">
@@ -21,57 +21,61 @@
       </div>
     </div>
 
-    <div class="toolbar panel">
-      <el-input
-        v-model="keyword"
-        class="toolbar-search"
-        :prefix-icon="Search"
-        placeholder="搜索标题、正文或分类"
-        clearable
-      />
-      <el-select v-model="categoryId" class="toolbar-select" placeholder="全部分类">
-        <el-option label="全部分类" value="" />
-        <el-option
-          v-for="category in categories"
-          :key="category.id"
-          :label="category.name"
-          :value="String(category.id)"
+    <section class="panel discovery-panel">
+      <div class="toolbar">
+        <el-input
+          v-model="keyword"
+          class="toolbar-search"
+          :prefix-icon="Search"
+          placeholder="搜索标题、正文或分类"
+          clearable
         />
-      </el-select>
-      <el-select v-model="sortMode" class="toolbar-select" placeholder="排序方式">
-        <el-option label="最近更新" value="updated-desc" />
-        <el-option label="最早更新" value="updated-asc" />
-        <el-option label="标题 A-Z" value="title-asc" />
-      </el-select>
-    </div>
+        <el-select v-model="categoryId" class="toolbar-select" placeholder="全部分类">
+          <el-option label="全部分类" value="" />
+          <el-option
+            v-for="category in categories"
+            :key="category.id"
+            :label="category.name"
+            :value="String(category.id)"
+          />
+        </el-select>
+        <el-select v-model="sortMode" class="toolbar-select" placeholder="排序方式">
+          <el-option label="最近更新" value="updated-desc" />
+          <el-option label="最早更新" value="updated-asc" />
+          <el-option label="标题 A-Z" value="title-asc" />
+        </el-select>
+      </div>
 
-    <div class="panel insight-panel">
-      <div class="filter-summary">
-        <span class="summary-icon">
-          <el-icon><DataAnalysis /></el-icon>
-        </span>
-        <div>
-          <strong>{{ activeFilterTitle }}</strong>
-          <span>{{ activeFilterMeta }}</span>
+      <div class="insight-panel">
+        <div class="filter-summary">
+          <span class="summary-icon">
+            <el-icon><DataAnalysis /></el-icon>
+          </span>
+          <div>
+            <strong>{{ activeFilterTitle }}</strong>
+            <span>{{ activeFilterMeta }}</span>
+          </div>
         </div>
+        <div class="category-rail">
+          <button class="category-filter" :class="{ active: !categoryId }" type="button" @click="selectCategory('')">
+            <span class="category-filter-dot all-dot">全</span>
+            <span>全部</span>
+          </button>
+          <button
+            v-for="category in categories"
+            :key="category.id"
+            class="category-filter"
+            :class="{ active: categoryId === String(category.id) }"
+            type="button"
+            @click="selectCategory(String(category.id))"
+          >
+            <span class="category-filter-dot" :style="articleTone(category)">{{ categoryInitial(category.name) }}</span>
+            <span>{{ category.name }}</span>
+          </button>
+        </div>
+        <el-button :icon="Close" :disabled="!hasFilters" @click="resetFilters">清空</el-button>
       </div>
-      <div class="category-rail">
-        <button class="category-filter" :class="{ active: !categoryId }" type="button" @click="selectCategory('')">
-          全部
-        </button>
-        <button
-          v-for="category in categories"
-          :key="category.id"
-          class="category-filter"
-          :class="{ active: categoryId === String(category.id) }"
-          type="button"
-          @click="selectCategory(String(category.id))"
-        >
-          {{ category.name }}
-        </button>
-      </div>
-      <el-button :icon="Close" :disabled="!hasFilters" @click="resetFilters">清空筛选</el-button>
-    </div>
+    </section>
 
     <div v-if="loading" class="article-grid">
       <div v-for="item in 4" :key="item" class="article-card skeleton-card">
@@ -90,7 +94,7 @@
 
     <div v-else class="article-grid">
       <article
-        v-for="article in sortedArticles"
+        v-for="(article, index) in sortedArticles"
         :key="article.id"
         class="article-card"
         :style="articleTone(article)"
@@ -102,12 +106,15 @@
           @click="$router.push(`/articles/${article.id}`)"
           @keyup.enter="$router.push(`/articles/${article.id}`)"
         >
-          <div class="card-meta">
-            <span class="category-chip">{{ article.categoryName || '未分类' }}</span>
-            <span class="time-chip">
-              <el-icon><Calendar /></el-icon>
-              更新 {{ formatDate(article.updatedAt) }}
-            </span>
+          <div class="article-card-topline">
+            <div class="card-meta">
+              <span class="category-chip">{{ article.categoryName || '未分类' }}</span>
+              <span class="time-chip">
+                <el-icon><Calendar /></el-icon>
+                更新 {{ formatDate(article.updatedAt) }}
+              </span>
+            </div>
+            <span class="article-sequence">{{ formatSequence(index) }}</span>
           </div>
           <h3>{{ article.title }}</h3>
           <p>{{ excerpt(article.content) }}</p>
@@ -120,7 +127,7 @@
           </div>
         </div>
         <div class="card-actions">
-          <el-button text @click="$router.push(`/articles/${article.id}`)">阅读</el-button>
+          <el-button text :icon="ArrowRight" @click="$router.push(`/articles/${article.id}`)">阅读全文</el-button>
           <template v-if="canManageResource(article)">
             <el-button text type="primary" :icon="ArrowRight" @click="$router.push(`/articles/${article.id}/edit`)">
               编辑
@@ -158,6 +165,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowRight, Calendar, Close, DataAnalysis, Delete, Refresh, Search, Stopwatch } from '@element-plus/icons-vue'
 import { deleteArticle, listArticles, listCategories } from '../api/blog'
 import { canManageResource } from '../utils/permissions'
+import { markdownToPlainText } from '../utils/markdown'
 
 const articles = ref([])
 const categories = ref([])
@@ -173,7 +181,7 @@ const pageState = reactive({
   totalElements: 0,
   totalPages: 1,
 })
-const tones = ['#2563eb', '#475569', '#1e40af', '#64748b', '#334155']
+const tones = ['#e77968', '#82977c', '#b58aa5', '#c69a52', '#7c8da6']
 
 const sortedArticles = computed(() => {
   return [...articles.value].sort((a, b) => {
@@ -219,10 +227,11 @@ const activeFilterMeta = computed(() => {
 })
 
 function excerpt(content) {
-  if (!content) {
+  const plainText = markdownToPlainText(content)
+  if (!plainText) {
     return '暂无正文内容'
   }
-  return content.length > 120 ? `${content.slice(0, 120)}...` : content
+  return plainText.length > 120 ? `${plainText.slice(0, 120)}...` : plainText
 }
 
 function contentLength(content) {
@@ -237,6 +246,14 @@ function readingMinutes(content) {
 function articleTone(article) {
   const source = Number(article.categoryId || article.id || 0)
   return { '--tone': tones[Math.abs(source) % tones.length] }
+}
+
+function categoryInitial(name) {
+  return (name || '#').trim().slice(0, 1).toUpperCase()
+}
+
+function formatSequence(index) {
+  return String((page.value - 1) * pageSize + index + 1).padStart(2, '0')
 }
 
 function selectCategory(id) {

@@ -11,6 +11,13 @@
       <article class="reader-panel panel">
         <div class="reader-cover">
           <div>
+            <div class="reader-author">
+              <span class="reader-author-avatar">{{ articleAuthorInitial }}</span>
+              <span>
+                <strong>{{ articleAuthorName }}</strong>
+                <small>作者</small>
+              </span>
+            </div>
             <div class="card-meta">
               <span class="category-chip">{{ article.categoryName || '未分类' }}</span>
               <span class="time-chip">
@@ -190,6 +197,10 @@ const readingMinutes = computed(() => {
 })
 const renderedArticle = computed(() => renderMarkdown(article.value?.content || ''))
 const canManageArticle = computed(() => canManageResource(article.value))
+const articleAuthorName = computed(() => {
+  return article.value?.authorName || article.value?.username || article.value?.authorUsername || 'Blog Studio'
+})
+const articleAuthorInitial = computed(() => articleAuthorName.value.trim().slice(0, 1).toUpperCase())
 
 function formatDate(value) {
   if (!value) {

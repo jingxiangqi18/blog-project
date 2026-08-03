@@ -98,6 +98,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Edit, Plus, Refresh } from '@element-plus/icons-vue'
 import { createCategory, deleteCategory, listArticlesByCategory, listCategories, updateCategory } from '../api/blog'
 import { isAdmin } from '../utils/permissions'
+import { markdownToPlainText } from '../utils/markdown'
 
 const categories = ref([])
 const categoryArticles = ref([])
@@ -108,7 +109,7 @@ const error = ref('')
 const articlesError = ref('')
 const selectedCategoryId = ref(null)
 const form = reactive({ name: '' })
-const tones = ['#2563eb', '#475569', '#1e40af', '#64748b', '#334155']
+const tones = ['#e77968', '#82977c', '#b58aa5', '#c69a52', '#7c8da6']
 const editing = reactive({
   visible: false,
   id: null,
@@ -131,10 +132,11 @@ function categoryInitial(name) {
 }
 
 function excerpt(content) {
-  if (!content) {
+  const plainText = markdownToPlainText(content)
+  if (!plainText) {
     return '暂无正文内容'
   }
-  return content.length > 72 ? `${content.slice(0, 72)}...` : content
+  return plainText.length > 72 ? `${plainText.slice(0, 72)}...` : plainText
 }
 
 async function loadCategories() {
