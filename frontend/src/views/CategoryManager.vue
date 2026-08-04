@@ -46,8 +46,19 @@
             </div>
           </div>
           <div v-if="canManageCategories" class="category-actions">
-            <el-button text type="primary" :icon="Edit" @click.stop="startEdit(category)">重命名</el-button>
-            <el-button text type="danger" :icon="Delete" @click.stop="remove(category)">删除</el-button>
+            <el-dropdown trigger="click" placement="bottom-end" @command="handleCategoryCommand(category, $event)">
+              <button class="article-more-button" type="button" aria-label="分类操作" title="分类操作" @click.stop>
+                <el-icon><MoreFilled /></el-icon>
+              </button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="edit" :icon="Edit">重命名</el-dropdown-item>
+                  <el-dropdown-item command="delete" :icon="Delete" class="danger-dropdown-item">
+                    删除分类
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </div>
       </div>
@@ -75,7 +86,7 @@
             <strong>{{ article.title }}</strong>
             <span>{{ excerpt(article.content) }}</span>
           </div>
-          <el-button text type="primary" @click="$router.push(`/articles/${article.id}`)">查看</el-button>
+          <el-button text :icon="ArrowRight" @click="$router.push(`/articles/${article.id}`)">阅读</el-button>
         </article>
       </div>
     </section>
@@ -95,7 +106,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Edit, Plus, Refresh } from '@element-plus/icons-vue'
+import { ArrowRight, Delete, Edit, MoreFilled, Plus, Refresh } from '@element-plus/icons-vue'
 import { createCategory, deleteCategory, listArticlesByCategory, listCategories, updateCategory } from '../api/blog'
 import { isAdmin } from '../utils/permissions'
 import { markdownToPlainText } from '../utils/markdown'
@@ -210,6 +221,17 @@ function startEdit(category) {
   editing.visible = true
   editing.id = category.id
   editing.name = category.name
+}
+
+function handleCategoryCommand(category, command) {
+  if (command === 'edit') {
+    startEdit(category)
+    return
+  }
+
+  if (command === 'delete') {
+    remove(category)
+  }
 }
 
 async function saveEdit() {

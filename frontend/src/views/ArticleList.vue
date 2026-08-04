@@ -2,8 +2,8 @@
   <section class="page-stack">
     <div class="hero-panel article-hero">
       <div class="hero-copy">
-        <p class="section-kicker">Studio Journal</p>
-        <h2>内容工作台</h2>
+        <p class="section-kicker">Curated Notes</p>
+        <h2>文章与灵感</h2>
       </div>
       <div class="hero-side">
         <div class="metric-card">
@@ -73,7 +73,15 @@
             <span>{{ category.name }}</span>
           </button>
         </div>
-        <el-button :icon="Close" :disabled="!hasFilters" @click="resetFilters">清空</el-button>
+        <el-button
+          class="clear-filter-button"
+          :icon="Close"
+          :disabled="!hasFilters"
+          circle
+          aria-label="清空筛选"
+          title="清空筛选"
+          @click="resetFilters"
+        />
       </div>
     </section>
 
@@ -128,20 +136,24 @@
         </div>
         <div class="card-actions">
           <el-button text :icon="ArrowRight" @click="$router.push(`/articles/${article.id}`)">阅读全文</el-button>
-          <template v-if="canManageResource(article)">
-            <el-button text type="primary" :icon="ArrowRight" @click="$router.push(`/articles/${article.id}/edit`)">
-              编辑
-            </el-button>
-            <el-button
-              text
-              type="danger"
-              :icon="Delete"
-              :loading="deletingArticleId === article.id"
-              @click="removeArticle(article)"
-            >
-              删除
-            </el-button>
-          </template>
+          <el-dropdown
+            v-if="canManageResource(article)"
+            trigger="click"
+            placement="bottom-end"
+            @command="handleArticleCommand(article, $event)"
+          >
+            <button class="article-more-button" type="button" aria-label="文章操作" title="文章操作">
+              <el-icon><MoreFilled /></el-icon>
+            </button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="edit" :icon="EditPen">编辑文章</el-dropdown-item>
+                <el-dropdown-item command="delete" :icon="Delete" class="danger-dropdown-item">
+                  删除文章
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
       </article>
     </div>
@@ -161,13 +173,15 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowRight, Calendar, Close, DataAnalysis, Delete, Refresh, Search, Stopwatch } from '@element-plus/icons-vue'
+import { ArrowRight, Calendar, Close, DataAnalysis, Delete, EditPen, MoreFilled, Refresh, Search, Stopwatch } from '@element-plus/icons-vue'
 import { deleteArticle, listArticles, listCategories } from '../api/blog'
 import { canManageResource } from '../utils/permissions'
 import { markdownToPlainText } from '../utils/markdown'
 
 const articles = ref([])
+const router = useRouter()
 const categories = ref([])
 const loading = ref(true)
 const error = ref('')
@@ -263,6 +277,17 @@ function selectCategory(id) {
 function resetFilters() {
   keyword.value = ''
   categoryId.value = ''
+}
+
+function handleArticleCommand(article, command) {
+  if (command === 'edit') {
+    router.push(`/articles/${article.id}/edit`)
+    return
+  }
+
+  if (command === 'delete') {
+    removeArticle(article)
+  }
 }
 
 function formatDate(value) {
