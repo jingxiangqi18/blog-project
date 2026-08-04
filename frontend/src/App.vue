@@ -4,11 +4,11 @@
       <aside class="app-sidebar">
         <RouterLink class="brand" to="/articles">
           <span class="brand-mark">
-            <span>B</span>
+            <el-icon><Camera /></el-icon>
           </span>
           <span class="brand-copy">
-            <strong>Blog Studio</strong>
-            <small>独立创作空间</small>
+            <strong>留白手记</strong>
+            <small>Notes / Code / Life</small>
           </span>
         </RouterLink>
 
@@ -35,52 +35,63 @@
           </span>
         </div>
 
+        <div class="sidebar-decoration" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+
         <div class="sidebar-footer">
           <span class="status-dot" :class="{ online: isSignedIn }" aria-hidden="true"></span>
-          <span>{{ isSignedIn ? '已登录工作台' : 'Local Studio' }}</span>
+          <span>{{ isSignedIn ? '灵感在线' : 'Quiet Mode' }}</span>
         </div>
       </aside>
 
       <div class="workspace">
         <header class="app-header">
-          <div class="topbar-copy">
-            <span>Journal</span>
-            <strong>创作与归档</strong>
+          <div class="topbar-context">
+            <span class="topbar-decoration" aria-hidden="true">
+              <i></i><i></i><i></i>
+            </span>
+            <div class="topbar-copy">
+              <span>{{ currentView.kicker }}</span>
+              <strong>{{ currentView.title }}</strong>
+            </div>
           </div>
 
           <div class="topbar-actions">
             <span v-if="sessionState.checking" class="auth-checking">校验登录中</span>
-            <el-dropdown v-else-if="isSignedIn" trigger="click" placement="bottom-end" @command="handleUserCommand">
-              <button class="user-pill" type="button">
-                <span class="user-avatar">{{ userInitial }}</span>
-                <span>
-                  <strong>{{ sessionState.user?.username }}</strong>
-                  <small>{{ roleLabel }}</small>
-                </span>
-                <el-icon class="user-pill-arrow"><ArrowDown /></el-icon>
-              </button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item disabled>
-                    <span class="dropdown-identity">{{ sessionState.user?.username }} · {{ roleLabel }}</span>
-                  </el-dropdown-item>
-                  <el-dropdown-item divided command="logout" :icon="SwitchButton">退出登录</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-            <el-button v-if="!isSignedIn" :icon="Lock" @click="loginVisible = true">登录</el-button>
-
-            <el-button
-              v-if="isSignedIn"
-              class="header-action"
-              type="primary"
-              :icon="EditPen"
-              aria-label="写文章"
-              title="写文章"
-              @click="$router.push('/articles/new')"
-            >
-              写文章
-            </el-button>
+            <template v-else-if="isSignedIn">
+              <el-button
+                class="header-action"
+                type="primary"
+                :icon="EditPen"
+                aria-label="写文章"
+                title="写文章"
+                @click="$router.push('/articles/new')"
+              >
+                写文章
+              </el-button>
+              <el-dropdown trigger="click" placement="bottom-end" @command="handleUserCommand">
+                <button class="user-pill" type="button">
+                  <span class="user-avatar">{{ userInitial }}</span>
+                  <span>
+                    <strong>{{ sessionState.user?.username }}</strong>
+                    <small>{{ roleLabel }}</small>
+                  </span>
+                  <el-icon class="user-pill-arrow"><ArrowDown /></el-icon>
+                </button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item disabled>
+                      <span class="dropdown-identity">{{ sessionState.user?.username }} · {{ roleLabel }}</span>
+                    </el-dropdown-item>
+                    <el-dropdown-item divided command="logout" :icon="SwitchButton">退出登录</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </template>
+            <el-button v-else :icon="Lock" @click="loginVisible = true">登录</el-button>
           </div>
         </header>
 
@@ -124,12 +135,14 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowDown, CollectionTag, Document, EditPen, Lock, SwitchButton, User } from '@element-plus/icons-vue'
+import { ArrowDown, Camera, CollectionTag, Document, EditPen, Lock, SwitchButton, User } from '@element-plus/icons-vue'
 import { getCurrentUser, login, register } from './api/blog'
 import { clearSession, finishSessionCheck, sessionState, setSession, signedIn } from './state/session'
 
 const loginVisible = ref(false)
+const route = useRoute()
 const loggingIn = ref(false)
 const authMode = ref('login')
 const loginFormRef = ref(null)
@@ -154,8 +167,19 @@ const loginRules = {
 }
 
 const isSignedIn = signedIn
-const authDialogTitle = computed(() => (authMode.value === 'login' ? '登录 Blog Studio' : '注册 Blog Studio'))
+const authDialogTitle = computed(() => (authMode.value === 'login' ? '登录留白手记' : '注册留白手记'))
 const isAdminUser = computed(() => sessionState.user?.role === 'ADMIN' && !sessionState.checking)
+const currentView = computed(() => {
+  const views = {
+    articles: { kicker: 'Today', title: '文章与灵感' },
+    categories: { kicker: 'Collections', title: '主题收藏' },
+    users: { kicker: 'People', title: '成员与权限' },
+    'article-detail': { kicker: 'Reading', title: '沉浸阅读' },
+    'article-create': { kicker: 'Compose', title: '写下新篇' },
+    'article-edit': { kicker: 'Revise', title: '继续创作' },
+  }
+  return views[route.name] || views.articles
+})
 const userInitial = computed(() => {
   return (sessionState.user?.username || 'U').trim().slice(0, 1).toUpperCase()
 })

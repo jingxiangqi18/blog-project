@@ -39,23 +39,19 @@
           </div>
           <div class="reader-actions">
             <el-button :icon="Back" @click="$router.push('/articles')">返回</el-button>
-            <el-button
-              v-if="canManageArticle"
-              type="primary"
-              :icon="EditPen"
-              @click="$router.push(`/articles/${article.id}/edit`)"
-            >
-              编辑
-            </el-button>
-            <el-button
-              v-if="canManageArticle"
-              type="danger"
-              :icon="Delete"
-              :loading="deletingArticle"
-              @click="removeArticle"
-            >
-              删除
-            </el-button>
+            <el-dropdown v-if="canManageArticle" trigger="click" placement="bottom-end" @command="handleArticleCommand">
+              <button class="reader-more-button" type="button" aria-label="文章操作" title="文章操作">
+                <el-icon><MoreFilled /></el-icon>
+              </button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="edit" :icon="EditPen">编辑文章</el-dropdown-item>
+                  <el-dropdown-item command="delete" :icon="Delete" class="danger-dropdown-item">
+                    删除文章
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </div>
 
@@ -198,7 +194,7 @@ const readingMinutes = computed(() => {
 const renderedArticle = computed(() => renderMarkdown(article.value?.content || ''))
 const canManageArticle = computed(() => canManageResource(article.value))
 const articleAuthorName = computed(() => {
-  return article.value?.authorName || article.value?.username || article.value?.authorUsername || 'Blog Studio'
+  return article.value?.authorName || article.value?.username || article.value?.authorUsername || '留白手记'
 })
 const articleAuthorInitial = computed(() => articleAuthorName.value.trim().slice(0, 1).toUpperCase())
 
@@ -291,6 +287,17 @@ async function removeArticle() {
     router.push('/articles')
   } finally {
     deletingArticle.value = false
+  }
+}
+
+function handleArticleCommand(command) {
+  if (command === 'edit') {
+    router.push(`/articles/${article.value.id}/edit`)
+    return
+  }
+
+  if (command === 'delete') {
+    removeArticle()
   }
 }
 
