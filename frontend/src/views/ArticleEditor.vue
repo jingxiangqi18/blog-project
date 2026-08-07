@@ -4,6 +4,11 @@
       <div>
         <p class="section-kicker">Compose</p>
         <h2>{{ isEdit ? '编辑文章' : '发布文章' }}</h2>
+        <div class="draft-save-status" :class="[draftStatus, { 'has-draft': hasSavedDraft }]">
+          <el-icon><Clock /></el-icon>
+          <span>{{ draftStatusLabel }}</span>
+          <span v-if="hasSavedDraft" class="draft-server-mark">草稿</span>
+        </div>
       </div>
       <el-button :icon="Back" @click="$router.back()">返回</el-button>
     </div>
@@ -114,9 +119,14 @@
         </button>
 
         <aside class="panel editor-side-panel">
-          <div class="side-section">
-            <p class="section-kicker">Publish</p>
-            <h3>发布信息</h3>
+          <div class="side-section side-section-heading">
+            <div>
+              <p class="section-kicker">Publish</p>
+              <h3>发布信息</h3>
+            </div>
+            <el-button v-if="isEdit" text :icon="DocumentCopy" @click="openRevisionHistory">
+              版本历史
+            </el-button>
           </div>
 
           <el-form-item label="分类" prop="categoryId">
@@ -129,6 +139,39 @@
               />
             </el-select>
           </el-form-item>
+
+          <section class="draft-control-card" :class="draftStatus">
+            <div class="draft-control-copy">
+              <span class="draft-control-icon">
+                <el-icon><Clock /></el-icon>
+              </span>
+              <div>
+                <strong>{{ draftControlTitle }}</strong>
+                <small>{{ draftControlMeta }}</small>
+              </div>
+            </div>
+            <div class="draft-control-actions">
+              <el-button
+                :icon="Check"
+                :loading="isDraftSaving"
+                :disabled="!canSaveDraft"
+                @click="saveDraftNow"
+              >
+                {{ hasSavedDraft ? '立即同步' : '保存草稿' }}
+              </el-button>
+              <el-button
+                v-if="hasSavedDraft"
+                text
+                type="danger"
+                :icon="Delete"
+                :loading="discardingDraft"
+                :disabled="isDraftSaving || saving"
+                @click="discardDraft"
+              >
+                放弃草稿
+              </el-button>
+            </div>
+          </section>
 
           <div class="writer-stats">
             <div>
@@ -151,7 +194,7 @@
               type="primary"
               :icon="Check"
               :loading="saving"
-              :disabled="categories.length === 0 || !canSubmitArticle"
+              :disabled="categories.length === 0 || !canSubmitArticle || isDraftSaving"
               @click="submit"
             >
               {{ isEdit ? '保存修改' : '发布文章' }}
@@ -160,27 +203,92 @@
         </aside>
       </div>
     </el-form>
+
+    <el-drawer v-model="historyOpen" title="版本历史" size="520px" destroy-on-close>
+      <el-skeleton v-if="historyLoading" :rows="8" animated />
+      <div v-else-if="historyError" class="state-panel compact-state">
+        <el-alert type="error" :title="historyError" show-icon :closable="false" />
+        <el-button :icon="Refresh" @click="loadRevisionHistory">重试</el-button>
+      </div>
+      <el-empty v-else-if="revisions.length === 0" description="还没有历史版本" />
+      <div v-else class="revision-workspace">
+        <div class="revision-list">
+          <button
+            v-for="revision in revisions"
+            :key="revision.id"
+            class="revision-item"
+            :class="{ active: selectedRevision?.id === revision.id }"
+            type="button"
+            @click="selectRevision(revision.id)"
+          >
+            <span>版本 {{ revision.revisionNumber }}</span>
+            <strong>{{ revision.title }}</strong>
+            <small>{{ revision.createdByName || '未知用户' }} · {{ formatRevisionDate(revision.createdAt) }}</small>
+          </button>
+        </div>
+
+        <el-skeleton v-if="revisionDetailLoading" :rows="6" animated />
+        <section v-else-if="selectedRevision" class="revision-preview">
+          <div class="revision-preview-heading">
+            <div>
+              <span>版本 {{ selectedRevision.revisionNumber }}</span>
+              <h3>{{ selectedRevision.title }}</h3>
+            </div>
+            <el-button
+              type="primary"
+              :icon="RefreshLeft"
+              :loading="restoringRevision"
+              :disabled="isDraftSaving"
+              @click="restoreRevision"
+            >
+              恢复此版本
+            </el-button>
+          </div>
+          <div class="markdown-body revision-markdown" v-html="renderMarkdown(selectedRevision.content || '')"></div>
+        </section>
+      </div>
+    </el-drawer>
   </section>
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Back,
   ChatLineRound,
   Check,
   CollectionTag,
+  Clock,
+  Delete,
+  DocumentCopy,
   List,
   Memo,
   Picture,
   Reading,
   Refresh,
+  RefreshLeft,
   Stopwatch,
 } from '@element-plus/icons-vue'
-import { createArticle, getArticle, listCategories, updateArticle } from '../api/blog'
-import { canManageResource, isSignedIn } from '../utils/permissions'
+import {
+  createArticle,
+  createArticleDraft,
+  deleteArticleDraft,
+  deleteArticleDraftById,
+  getArticle,
+  getArticleDraft,
+  getArticleDraftById,
+  getArticleRevision,
+  listArticleRevisions,
+  listCategories,
+  restoreArticleRevision,
+  saveArticleDraft,
+  updateArticle,
+  updateArticleDraft,
+} from '../api/blog'
+import { sessionState } from '../state/session'
+import { canManageResource, currentUserId, isSignedIn } from '../utils/permissions'
 import { renderMarkdown } from '../utils/markdown'
 
 const props = defineProps({
@@ -205,6 +313,24 @@ const editorLayoutRef = ref(null)
 const editorPanePercent = ref(50)
 const sidePanelWidth = ref(260)
 const sourceArticle = ref(null)
+const draftId = ref(null)
+const draftStatus = ref('saved')
+const lastDraftSavedAt = ref(null)
+const lastSavedSnapshot = ref('')
+const initializingForm = ref(true)
+const isDraftSaving = ref(false)
+const discardingDraft = ref(false)
+const historyOpen = ref(false)
+const historyLoading = ref(false)
+const historyError = ref('')
+const revisions = ref([])
+const selectedRevision = ref(null)
+const revisionDetailLoading = ref(false)
+const restoringRevision = ref(false)
+const NEW_DRAFT_STORAGE_KEY = 'blogNewArticleDraftId'
+const AUTO_SAVE_DELAY = 1400
+let autoSaveTimer = null
+let autoSaveDebounceTimer = null
 const form = reactive({
   title: '',
   categoryId: '',
@@ -220,6 +346,58 @@ const estimatedMinutes = computed(() => {
   return contentLength.value ? Math.max(1, Math.ceil(contentLength.value / 500)) : 0
 })
 const renderedContent = computed(() => renderMarkdown(form.content))
+const currentFormSnapshot = computed(() => JSON.stringify({
+  title: form.title,
+  categoryId: form.categoryId || null,
+  content: form.content,
+}))
+const hasUnsavedChanges = computed(() => {
+  return !initializingForm.value && currentFormSnapshot.value !== lastSavedSnapshot.value
+})
+const hasSavedDraft = computed(() => Boolean(draftId.value))
+const newDraftStorageKey = computed(() => {
+  const userId = currentUserId()
+  return userId === null ? '' : `${NEW_DRAFT_STORAGE_KEY}:${userId}`
+})
+const canSaveDraft = computed(() => {
+  return canSubmitArticle.value && hasUnsavedChanges.value && !saving.value && !isDraftSaving.value
+})
+const draftStatusLabel = computed(() => {
+  if (draftStatus.value === 'saving') {
+    return '正在自动保存'
+  }
+  if (draftStatus.value === 'unsaved') {
+    return '有尚未保存的修改'
+  }
+  if (draftStatus.value === 'error') {
+    return '自动保存失败，将在稍后重试'
+  }
+  if (lastDraftSavedAt.value) {
+    return `已保存 · ${formatDraftTime(lastDraftSavedAt.value)}`
+  }
+  return '草稿自动保存'
+})
+const draftControlTitle = computed(() => {
+  if (draftStatus.value === 'saving') {
+    return '正在同步草稿'
+  }
+  if (draftStatus.value === 'error') {
+    return '草稿同步失败'
+  }
+  if (hasUnsavedChanges.value) {
+    return '有未同步的修改'
+  }
+  return hasSavedDraft.value ? '草稿已同步' : '尚未生成草稿'
+})
+const draftControlMeta = computed(() => {
+  if (draftStatus.value === 'error') {
+    return '保留当前页面，点击按钮即可重试'
+  }
+  if (lastDraftSavedAt.value) {
+    return `最近保存于 ${formatDraftTime(lastDraftSavedAt.value)}`
+  }
+  return '开始写作后自动保存'
+})
 const workspaceStyle = computed(() => {
   if (editorMode.value !== 'split') {
     return null
@@ -242,6 +420,294 @@ const rules = {
   categoryId: [{ required: true, message: '请选择分类', trigger: 'change' }],
   content: [{ required: true, message: '请输入正文', trigger: 'blur' }],
 }
+
+watch(currentFormSnapshot, () => {
+  if(initializingForm.value){
+    return
+  }
+
+  draftStatus.value = hasUnsavedChanges.value ? 'unsaved' : 'saved'
+  if(hasUnsavedChanges.value){
+    scheduleAutoSave()
+  }
+})
+
+function draftPayload(){
+  return {
+    title: form.title,
+    content: form.content,
+    categoryId: form.categoryId ? Number(form.categoryId) : null,
+  }
+}
+
+function formatDraftTime(value){
+  const date = new Date(value)
+  if(Number.isNaN(date.getTime())){
+    return '刚刚'
+  }
+
+  const now = new Date()
+  const isToday = date.toDateString() === now.toDateString()
+  return date.toLocaleString('zh-CN', isToday
+    ? { hour: '2-digit', minute: '2-digit', hour12: false }
+    : { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
+function formatRevisionDate(value){
+  if(!value){
+    return '未知时间'
+  }
+
+  return new Date(value).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}
+
+function applyDraft(draft){
+  draftId.value = draft.id
+  form.title = draft.title || ''
+  form.content = draft.content || ''
+  form.categoryId = draft.categoryId || ''
+  lastDraftSavedAt.value = draft.updatedAt
+}
+
+function getStoredNewDraft(){
+  if(newDraftStorageKey.value){
+    const scopedDraftId = localStorage.getItem(newDraftStorageKey.value)
+    if(scopedDraftId){
+      return { id: scopedDraftId, key: newDraftStorageKey.value }
+    }
+  }
+
+  const legacyDraftId = localStorage.getItem(NEW_DRAFT_STORAGE_KEY)
+  return legacyDraftId ? { id: legacyDraftId, key: NEW_DRAFT_STORAGE_KEY } : null
+}
+
+function rememberNewDraft(id){
+  if(!newDraftStorageKey.value){
+    return
+  }
+
+  localStorage.setItem(newDraftStorageKey.value, String(id))
+  localStorage.removeItem(NEW_DRAFT_STORAGE_KEY)
+}
+
+function forgetNewDraft(){
+  if(newDraftStorageKey.value){
+    localStorage.removeItem(newDraftStorageKey.value)
+  }
+  localStorage.removeItem(NEW_DRAFT_STORAGE_KEY)
+}
+
+function waitForSessionCheck(){
+  if(!sessionState.checking){
+    return Promise.resolve()
+  }
+
+  return new Promise((resolve) => {
+    const stop = watch(
+      () => sessionState.checking,
+      (checking) => {
+        if(!checking){
+          stop()
+          resolve()
+        }
+      },
+    )
+  })
+}
+
+async function loadSavedDraft(){
+  if(isEdit.value){
+    const draft = await getArticleDraft(props.id)
+    if(draft?.id){
+      applyDraft(draft)
+      ElMessage.info('已恢复上次自动保存的草稿')
+    }
+    return
+  }
+
+  const storedDraft = getStoredNewDraft()
+  if(!storedDraft){
+    return
+  }
+
+  try{
+    const draft = await getArticleDraftById(storedDraft.id)
+    applyDraft(draft)
+    rememberNewDraft(draft.id)
+    ElMessage.info('已恢复上次未发布的草稿')
+  }catch(error){
+    if(error.response?.status === 404 || storedDraft.key === newDraftStorageKey.value){
+      localStorage.removeItem(storedDraft.key)
+    }
+  }
+}
+
+function scheduleAutoSave(delay = AUTO_SAVE_DELAY){
+  window.clearTimeout(autoSaveDebounceTimer)
+  autoSaveDebounceTimer = window.setTimeout(() => autoSaveDraft(), delay)
+}
+
+async function autoSaveDraft({ notify = false } = {}){
+  if(
+    loading.value ||
+    saving.value ||
+    !canSubmitArticle.value ||
+    !hasUnsavedChanges.value
+  ){
+    return false
+  }
+
+  if(isDraftSaving.value){
+    scheduleAutoSave(500)
+    return false
+  }
+
+  window.clearTimeout(autoSaveDebounceTimer)
+  const snapshotBeingSaved = currentFormSnapshot.value
+  isDraftSaving.value = true
+  draftStatus.value = 'saving'
+
+  try{
+    let savedDraft
+    if(isEdit.value){
+      savedDraft = await saveArticleDraft(props.id, draftPayload())
+    }else if(draftId.value){
+      savedDraft = await updateArticleDraft(draftId.value, draftPayload())
+    }else{
+      savedDraft = await createArticleDraft(draftPayload())
+      draftId.value = savedDraft.id
+      rememberNewDraft(savedDraft.id)
+    }
+
+    draftId.value = savedDraft.id
+    if(!isEdit.value){
+      rememberNewDraft(savedDraft.id)
+    }
+    lastSavedSnapshot.value = snapshotBeingSaved
+    lastDraftSavedAt.value = savedDraft.updatedAt
+    draftStatus.value = currentFormSnapshot.value === snapshotBeingSaved ? 'saved' : 'unsaved'
+    if(notify){
+      ElMessage.success('草稿已保存')
+    }
+    return true
+  }catch{
+    draftStatus.value = 'error'
+    if(notify){
+      ElMessage.error('草稿保存失败，请稍后重试')
+    }
+    return false
+  }finally{
+    isDraftSaving.value = false
+    if(hasUnsavedChanges.value && draftStatus.value !== 'error'){
+      scheduleAutoSave()
+    }
+  }
+}
+
+async function deletePersistedDraft({ ignoreErrors = false } = {}){
+  try{
+    if(isEdit.value){
+      await deleteArticleDraft(props.id)
+    }else if(draftId.value){
+      await deleteArticleDraftById(draftId.value)
+    }
+  }catch(error){
+    if(!ignoreErrors){
+      throw error
+    }
+  }
+
+  draftId.value = null
+  forgetNewDraft()
+}
+
+async function clearSavedDraft(){
+  await deletePersistedDraft({ ignoreErrors: true })
+}
+
+async function saveDraftNow(){
+  if(!canSubmitArticle.value){
+    ElMessage.warning('当前账号没有保存这篇草稿的权限')
+    return
+  }
+
+  if(!hasUnsavedChanges.value){
+    ElMessage.info(hasSavedDraft.value ? '草稿已经是最新状态' : '还没有需要保存的内容')
+    return
+  }
+
+  await autoSaveDraft({ notify: true })
+}
+
+async function discardDraft(){
+  if(!hasSavedDraft.value || discardingDraft.value){
+    return
+  }
+
+  try{
+    await ElMessageBox.confirm(
+      isEdit.value ? '放弃草稿后，将恢复为当前已发布版本。' : '放弃后，这份未发布草稿将被永久删除。',
+      '放弃草稿',
+      {
+        confirmButtonText: '确认放弃',
+        cancelButtonText: '继续编辑',
+        type: 'warning',
+      },
+    )
+  }catch{
+    return
+  }
+
+  discardingDraft.value = true
+  initializingForm.value = true
+  window.clearTimeout(autoSaveDebounceTimer)
+
+  try{
+    await deletePersistedDraft()
+
+    if(isEdit.value && sourceArticle.value){
+      form.title = sourceArticle.value.title
+      form.content = sourceArticle.value.content
+      form.categoryId = sourceArticle.value.categoryId
+    }else{
+      form.title = ''
+      form.content = ''
+      form.categoryId = categories.value[0]?.id || ''
+    }
+
+    lastDraftSavedAt.value = null
+    await nextTick()
+    lastSavedSnapshot.value = currentFormSnapshot.value
+    draftStatus.value = 'saved'
+    ElMessage.success('草稿已放弃')
+  }finally{
+    initializingForm.value = false
+    discardingDraft.value = false
+  }
+}
+
+function handleBeforeUnload(event){
+  if(!hasUnsavedChanges.value){
+    return
+  }
+
+  event.preventDefault()
+  event.returnValue = ''
+}
+
+onBeforeRouteLeave(() => {
+  if(!hasUnsavedChanges.value){
+    return true
+  }
+
+  return window.confirm('当前修改尚未自动保存，确定离开编辑页面吗？')
+})
 
 const snippets = {
   heading: {
@@ -476,8 +942,10 @@ function startLayoutResize(event) {
 async function loadData() {
   loading.value = true
   loadError.value = ''
+  initializingForm.value = true
 
   try {
+    await waitForSessionCheck()
     categories.value = await listCategories()
     categoriesLoaded.value = true
 
@@ -498,14 +966,100 @@ async function loadData() {
     } else if (categories.value[0]) {
       form.categoryId = categories.value[0].id
     }
+
+    await loadSavedDraft()
   } catch {
     loadError.value = isEdit.value ? '文章或分类加载失败' : '分类加载失败，请确认后端服务已启动'
   } finally {
+    lastSavedSnapshot.value = currentFormSnapshot.value
+    draftStatus.value = 'saved'
+    initializingForm.value = false
     loading.value = false
   }
 }
 
+async function openRevisionHistory(){
+  historyOpen.value = true
+  await loadRevisionHistory()
+}
+
+async function loadRevisionHistory(){
+  if(!isEdit.value){
+    return
+  }
+
+  historyLoading.value = true
+  historyError.value = ''
+
+  try{
+    revisions.value = await listArticleRevisions(props.id)
+    if(revisions.value[0]){
+      await selectRevision(revisions.value[0].id)
+    }else{
+      selectedRevision.value = null
+    }
+  }catch{
+    historyError.value = '历史版本加载失败'
+  }finally{
+    historyLoading.value = false
+  }
+}
+
+async function selectRevision(revisionId){
+  revisionDetailLoading.value = true
+
+  try{
+    selectedRevision.value = await getArticleRevision(props.id, revisionId)
+  }catch{
+    ElMessage.error('版本内容加载失败')
+  }finally{
+    revisionDetailLoading.value = false
+  }
+}
+
+async function restoreRevision(){
+  if(!selectedRevision.value || isDraftSaving.value){
+    return
+  }
+
+  try{
+    await ElMessageBox.confirm(
+      `确定恢复到版本 ${selectedRevision.value.revisionNumber} 吗？当前正式内容会作为新版本保留。`,
+      '恢复历史版本',
+      {
+        confirmButtonText: '确认恢复',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+  }catch{
+    return
+  }
+
+  restoringRevision.value = true
+  try{
+    const restored = await restoreArticleRevision(props.id, selectedRevision.value.id)
+    sourceArticle.value = restored
+    form.title = restored.title
+    form.content = restored.content
+    form.categoryId = restored.categoryId
+    await clearSavedDraft()
+    lastSavedSnapshot.value = currentFormSnapshot.value
+    lastDraftSavedAt.value = null
+    draftStatus.value = 'saved'
+    ElMessage.success('历史版本已恢复，并生成了新的版本记录')
+    await loadRevisionHistory()
+  }finally{
+    restoringRevision.value = false
+  }
+}
+
 async function submit() {
+  if(isDraftSaving.value){
+    ElMessage.info('请等待当前草稿保存完成')
+    return
+  }
+
   if (!canSubmitArticle.value) {
     ElMessage.warning('当前账号没有保存这篇文章的权限')
     return
@@ -525,6 +1079,14 @@ async function submit() {
       ? await updateArticle(props.id, payload)
       : await createArticle(payload)
 
+    sourceArticle.value = saved
+    form.title = saved.title
+    form.content = saved.content
+    form.categoryId = saved.categoryId
+    await clearSavedDraft()
+    lastSavedSnapshot.value = currentFormSnapshot.value
+    lastDraftSavedAt.value = null
+    draftStatus.value = 'saved'
     ElMessage.success(isEdit.value ? '文章已保存' : '文章已发布')
     router.push(`/articles/${saved.id}`)
   } finally {
@@ -532,5 +1094,15 @@ async function submit() {
   }
 }
 
-onMounted(loadData)
+onMounted(async () => {
+  window.addEventListener('beforeunload', handleBeforeUnload)
+  await loadData()
+  autoSaveTimer = window.setInterval(autoSaveDraft, 30000)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+  window.clearInterval(autoSaveTimer)
+  window.clearTimeout(autoSaveDebounceTimer)
+})
 </script>

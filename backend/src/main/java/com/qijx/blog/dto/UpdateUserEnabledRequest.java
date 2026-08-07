@@ -4,13 +4,13 @@ import jakarta.validation.constraints.NotNull;
 
 public class UpdateUserEnabledRequest {
     @NotNull(message = "Enabled must not be null")
-    private boolean enabled;
+    private Boolean enabled;
 
-    public boolean getEnabled(){
+    public Boolean getEnabled(){
         return enabled;
     }
 
-    public void setEnabled(boolean enabled){
+    public void setEnabled(Boolean enabled){
         this.enabled = enabled;
     }
 }

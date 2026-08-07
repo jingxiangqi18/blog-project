@@ -224,4 +224,25 @@ public class ArticleRepository {
 
         return jdbcTemplate.query(sql, this::mapRow, categoryId);
     }
+
+    public List<Article> findByAuthorId(Long authorId){
+        String sql = """
+                SELECT articles.id,
+                       articles.title,
+                       articles.content,
+                       articles.category_id,
+                       articles.author_id,
+                       users.username AS author_name,
+                       categories.name AS category_name,
+                       articles.created_at,
+                       articles.updated_at
+                FROM articles
+                LEFT JOIN categories ON articles.category_id = categories.id
+                LEFT JOIN users ON articles.author_id = users.id
+                WHERE articles.author_id = ?
+                ORDER BY articles.updated_at DESC, articles.id DESC
+                """;
+
+        return jdbcTemplate.query(sql, this::mapRow, authorId);
+    }
 }
