@@ -17,6 +17,8 @@ import jakarta.validation.Valid;
 import com.qijx.blog.dto.UserResponse;
 import com.qijx.blog.dto.UpdateUserEnabledRequest;
 import com.qijx.blog.dto.ChangePasswordRequest;
+import com.qijx.blog.entity.Article;
+import com.qijx.blog.entity.Comment;
 
 @RestController
 @RequestMapping("/api/users")
@@ -45,9 +47,23 @@ public class UserController {
 
     @PatchMapping("/me/password")
     public void changeMyPassword(
-        @RequestHeader(value = "Authorization", required = false) String authorizationheader,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
         @Valid @RequestBody ChangePasswordRequest request
     ){
-        userService.changeMyPassword(authorizationheader, request);
+        userService.changeMyPassword(authorizationHeader, request);
+    }
+
+    @GetMapping("/me/articles")
+    public List<Article> listMyArticles(
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ){
+        return userService.listMyArticles(authorizationHeader);
+    }
+
+    @GetMapping("/me/comments")
+    public List<Comment> listMyComments(
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ){
+        return userService.listMyComments(authorizationHeader);
     }
 }

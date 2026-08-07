@@ -40,6 +40,46 @@ export function deleteArticle(id) {
   return http.delete(`/articles/${id}`)
 }
 
+export function createArticleDraft(payload) {
+  return http.post('/articles/drafts', payload)
+}
+
+export function getArticleDraftById(draftId) {
+  return http.get(`/articles/drafts/${draftId}`)
+}
+
+export function updateArticleDraft(draftId, payload) {
+  return http.put(`/articles/drafts/${draftId}`, payload)
+}
+
+export function deleteArticleDraftById(draftId) {
+  return http.delete(`/articles/drafts/${draftId}`)
+}
+
+export function getArticleDraft(articleId) {
+  return http.get(`/articles/${articleId}/draft`)
+}
+
+export function saveArticleDraft(articleId, payload) {
+  return http.put(`/articles/${articleId}/draft`, payload)
+}
+
+export function deleteArticleDraft(articleId) {
+  return http.delete(`/articles/${articleId}/draft`)
+}
+
+export function listArticleRevisions(articleId) {
+  return http.get(`/articles/${articleId}/revisions`)
+}
+
+export function getArticleRevision(articleId, revisionId) {
+  return http.get(`/articles/${articleId}/revisions/${revisionId}`)
+}
+
+export function restoreArticleRevision(articleId, revisionId) {
+  return http.post(`/articles/${articleId}/revisions/${revisionId}/restore`)
+}
+
 export function listCategories() {
   return http.get('/categories')
 }

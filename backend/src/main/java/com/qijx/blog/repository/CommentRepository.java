@@ -145,4 +145,22 @@ public class CommentRepository {
             articleId
         );
     }
+
+    public List<Comment> findByAuthorId(Long authorId){
+        String sql = """
+                SELECT comments.id,
+                       comments.article_id,
+                       comments.content,
+                       comments.author_id,
+                       users.username AS author_name,
+                       comments.created_at,
+                       comments.updated_at
+                FROM comments
+                LEFT JOIN users ON comments.author_id = users.id
+                WHERE comments.author_id = ?
+                ORDER BY comments.updated_at DESC, comments.id DESC
+                """;
+
+        return jdbcTemplate.query(sql, this::mapRow, authorId);
+    }
 }

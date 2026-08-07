@@ -9,7 +9,7 @@ public class RegisterRequest {
     private String username;
 
     @NotBlank(message = "Password must not be blank")
-    @Size(min = 5, max = 72, message = "Password length must be between 5 and 72")
+    @Size(min = 6, max = 72, message = "Password length must be between 6 and 72")
     private String password;
 
     public String getUsername(){

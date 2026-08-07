@@ -1,5 +1,9 @@
 package com.qijx.blog.controller;
 
+import java.util.List;
+import java.util.Optional;
+
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -13,6 +17,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 
 import com.qijx.blog.dto.PageResponse;
 import com.qijx.blog.entity.Article;
+import com.qijx.blog.entity.ArticleDraft;
+import com.qijx.blog.entity.ArticleRevision;
 import com.qijx.blog.service.ArticleService;
 
 import jakarta.validation.Valid;
@@ -49,6 +55,91 @@ public class ArticleController {
     @GetMapping("/{id}")
     public Article getArticle(@PathVariable Long id){
         return articleService.getArticle(id);
+    }
+
+    @PostMapping("/drafts")
+    public ArticleDraft createDraft(
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+        @Valid @RequestBody ArticleDraft draft
+    ){
+        return articleService.createDraft(draft, authorizationHeader);
+    }
+
+    @GetMapping("/drafts/{draftId}")
+    public ArticleDraft getDraft(
+        @PathVariable Long draftId,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ){
+        return articleService.getDraft(draftId, authorizationHeader);
+    }
+
+    @PutMapping("/drafts/{draftId}")
+    public ArticleDraft updateDraft(
+        @PathVariable Long draftId,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+        @Valid @RequestBody ArticleDraft draft
+    ){
+        return articleService.updateDraft(draftId, draft, authorizationHeader);
+    }
+
+    @DeleteMapping("/drafts/{draftId}")
+    public void deleteDraft(
+        @PathVariable Long draftId,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ){
+        articleService.deleteDraft(draftId, authorizationHeader);
+    }
+
+    @GetMapping("/{id}/draft")
+    public ResponseEntity<ArticleDraft> getArticleDraft(
+        @PathVariable Long id,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ){
+        Optional<ArticleDraft> draft = articleService.getArticleDraft(id, authorizationHeader);
+        return draft.map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
+    @PutMapping("/{id}/draft")
+    public ArticleDraft saveArticleDraft(
+        @PathVariable Long id,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+        @Valid @RequestBody ArticleDraft draft
+    ){
+        return articleService.saveArticleDraft(id, draft, authorizationHeader);
+    }
+
+    @DeleteMapping("/{id}/draft")
+    public void deleteArticleDraft(
+        @PathVariable Long id,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ){
+        articleService.deleteArticleDraft(id, authorizationHeader);
+    }
+
+    @GetMapping("/{id}/revisions")
+    public List<ArticleRevision> listRevisions(
+        @PathVariable Long id,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ){
+        return articleService.listRevisions(id, authorizationHeader);
+    }
+
+    @GetMapping("/{id}/revisions/{revisionId}")
+    public ArticleRevision getRevision(
+        @PathVariable Long id,
+        @PathVariable Long revisionId,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ){
+        return articleService.getRevision(id, revisionId, authorizationHeader);
+    }
+
+    @PostMapping("/{id}/revisions/{revisionId}/restore")
+    public Article restoreRevision(
+        @PathVariable Long id,
+        @PathVariable Long revisionId,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ){
+        return articleService.restoreRevision(id, revisionId, authorizationHeader);
     }
 
     @PutMapping("/{id}")
