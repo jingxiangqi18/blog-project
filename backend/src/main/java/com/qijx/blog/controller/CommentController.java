@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.qijx.blog.service.CommentService;
+import com.qijx.blog.dto.InteractionStatusResponse;
 import com.qijx.blog.entity.Comment;
 
 import jakarta.validation.Valid;
@@ -38,6 +39,43 @@ public class CommentController {
     @GetMapping
     public List<Comment> listCommentsByArticleId(@PathVariable Long articleId){
         return commentService.listCommentsByArticleId(articleId);
+    }
+
+    @PostMapping("/{id}/replies")
+    public Comment createReply(
+        @PathVariable Long articleId,
+        @PathVariable Long id,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+        @Valid @RequestBody Comment comment
+    ){
+        return commentService.createReply(articleId, id, comment, authorizationHeader);
+    }
+
+    @GetMapping("/{id}/likes")
+    public InteractionStatusResponse getLikeStatus(
+        @PathVariable Long articleId,
+        @PathVariable Long id,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ){
+        return commentService.getLikeStatus(articleId, id, authorizationHeader);
+    }
+
+    @PostMapping("/{id}/likes")
+    public InteractionStatusResponse likeComment(
+        @PathVariable Long articleId,
+        @PathVariable Long id,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ){
+        return commentService.likeComment(articleId, id, authorizationHeader);
+    }
+
+    @DeleteMapping("/{id}/likes")
+    public InteractionStatusResponse unlikeComment(
+        @PathVariable Long articleId,
+        @PathVariable Long id,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ){
+        return commentService.unlikeComment(articleId, id, authorizationHeader);
     }
 
     @PutMapping("/{id}")

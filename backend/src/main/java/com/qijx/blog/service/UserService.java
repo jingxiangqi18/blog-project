@@ -104,4 +104,10 @@ public class UserService {
 
         return commentRepository.findByAuthorId(currentUser.getId());
     }
+
+    public List<Article> listMyFavoriteArticles(String authorizationHeader){
+        User currentUser = currentUserService.getCurrentEnabledUser(authorizationHeader);
+
+        return articleRepository.findFavoritedByUserId(currentUser.getId());
+    }
 }

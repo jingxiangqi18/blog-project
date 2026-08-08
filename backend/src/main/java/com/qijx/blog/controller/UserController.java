@@ -66,4 +66,11 @@ public class UserController {
     ){
         return userService.listMyComments(authorizationHeader);
     }
+
+    @GetMapping("/me/favorites")
+    public List<Article> listMyFavoriteArticles(
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ){
+        return userService.listMyFavoriteArticles(authorizationHeader);
+    }
 }

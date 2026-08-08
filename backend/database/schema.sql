@@ -89,16 +89,63 @@ CREATE TABLE IF NOT EXISTS comments (
     id BIGINT NOT NULL AUTO_INCREMENT,
     article_id BIGINT NOT NULL,
     author_id BIGINT NOT NULL,
+    parent_id BIGINT NULL,
     content TEXT NOT NULL,
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
     PRIMARY KEY (id),
     KEY idx_comments_article_id (article_id),
     KEY idx_comments_author_id (author_id),
+    KEY idx_comments_parent_id (parent_id),
     CONSTRAINT fk_comments_article
         FOREIGN KEY (article_id) REFERENCES articles (id)
         ON DELETE CASCADE,
     CONSTRAINT fk_comments_author
         FOREIGN KEY (author_id) REFERENCES users (id)
-        ON DELETE RESTRICT
+        ON DELETE RESTRICT,
+    CONSTRAINT fk_comments_parent
+        FOREIGN KEY (parent_id) REFERENCES comments (id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS article_likes (
+    article_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (article_id, user_id),
+    KEY idx_article_likes_user_id (user_id),
+    CONSTRAINT fk_article_likes_article
+        FOREIGN KEY (article_id) REFERENCES articles (id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_article_likes_user
+        FOREIGN KEY (user_id) REFERENCES users (id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS article_favorites (
+    article_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (article_id, user_id),
+    KEY idx_article_favorites_user_id (user_id),
+    CONSTRAINT fk_article_favorites_article
+        FOREIGN KEY (article_id) REFERENCES articles (id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_article_favorites_user
+        FOREIGN KEY (user_id) REFERENCES users (id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS comment_likes (
+    comment_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (comment_id, user_id),
+    KEY idx_comment_likes_user_id (user_id),
+    CONSTRAINT fk_comment_likes_comment
+        FOREIGN KEY (comment_id) REFERENCES comments (id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_comment_likes_user
+        FOREIGN KEY (user_id) REFERENCES users (id)
+        ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

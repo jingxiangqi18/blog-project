@@ -21,19 +21,23 @@
             <el-icon><CollectionTag /></el-icon>
             <span>分类</span>
           </RouterLink>
+          <RouterLink v-if="isSignedIn" to="/me" class="nav-item">
+            <el-icon><User /></el-icon>
+            <span>我的</span>
+          </RouterLink>
           <RouterLink v-if="isAdminUser" to="/users" class="nav-item">
             <el-icon><User /></el-icon>
             <span>用户</span>
           </RouterLink>
         </nav>
 
-        <div v-if="isSignedIn" class="sidebar-user-card">
+        <RouterLink v-if="isSignedIn" class="sidebar-user-card" to="/me">
           <span class="user-avatar large">{{ userInitial }}</span>
           <span>
             <strong>{{ sessionState.user?.username }}</strong>
             <small>{{ roleLabel }}</small>
           </span>
-        </div>
+        </RouterLink>
 
         <div class="sidebar-decoration" aria-hidden="true">
           <span></span>
@@ -86,6 +90,7 @@
                     <el-dropdown-item disabled>
                       <span class="dropdown-identity">{{ sessionState.user?.username }} · {{ roleLabel }}</span>
                     </el-dropdown-item>
+                    <el-dropdown-item command="profile" :icon="User">个人中心</el-dropdown-item>
                     <el-dropdown-item divided command="logout" :icon="SwitchButton">退出登录</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
@@ -134,8 +139,8 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowDown, Camera, CollectionTag, Document, EditPen, Lock, SwitchButton, User } from '@element-plus/icons-vue'
 import { getCurrentUser, login, register } from './api/blog'
@@ -143,6 +148,7 @@ import { clearSession, finishSessionCheck, sessionState, setSession, signedIn } 
 
 const loginVisible = ref(false)
 const route = useRoute()
+const router = useRouter()
 const loggingIn = ref(false)
 const authMode = ref('login')
 const loginFormRef = ref(null)
@@ -173,6 +179,7 @@ const currentView = computed(() => {
   const views = {
     articles: { kicker: 'Today', title: '文章与灵感' },
     categories: { kicker: 'Collections', title: '主题收藏' },
+    profile: { kicker: 'Personal Space', title: '我的留白' },
     users: { kicker: 'People', title: '成员与权限' },
     'article-detail': { kicker: 'Reading', title: '沉浸阅读' },
     'article-create': { kicker: 'Compose', title: '写下新篇' },
@@ -197,8 +204,8 @@ function validateUsername(_rule, value, callback) {
 }
 
 function validatePassword(_rule, value, callback) {
-  if (authMode.value === 'register' && (value.length < 5 || value.length > 72)) {
-    callback(new Error('密码长度需要在 5 到 72 个字符之间'))
+  if (authMode.value === 'register' && (value.length < 6 || value.length > 72)) {
+    callback(new Error('密码长度需要在 6 到 72 个字符之间'))
     return
   }
 
@@ -230,9 +237,19 @@ function logout() {
 }
 
 function handleUserCommand(command) {
+  if (command === 'profile') {
+    router.push('/me')
+    return
+  }
+
   if (command === 'logout') {
     logout()
   }
+}
+
+function openAuthDialog() {
+  authMode.value = 'login'
+  loginVisible.value = true
 }
 
 async function checkCurrentSession() {
@@ -254,5 +271,12 @@ async function checkCurrentSession() {
   }
 }
 
-onMounted(checkCurrentSession)
+onMounted(() => {
+  window.addEventListener('blog:open-auth', openAuthDialog)
+  checkCurrentSession()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('blog:open-auth', openAuthDialog)
+})
 </script>

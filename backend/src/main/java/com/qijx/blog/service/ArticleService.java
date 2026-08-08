@@ -10,12 +10,14 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 
 import com.qijx.blog.dto.PageResponse;
+import com.qijx.blog.dto.InteractionStatusResponse;
 import com.qijx.blog.entity.Article;
 import com.qijx.blog.entity.ArticleDraft;
 import com.qijx.blog.entity.ArticleRevision;
 import com.qijx.blog.entity.Role;
 import com.qijx.blog.entity.User;
 import com.qijx.blog.repository.ArticleRepository;
+import com.qijx.blog.repository.ArticleInteractionRepository;
 import com.qijx.blog.repository.ArticleDraftRepository;
 import com.qijx.blog.repository.ArticleRevisionRepository;
 import com.qijx.blog.repository.CommentRepository;
@@ -24,6 +26,7 @@ import com.qijx.blog.repository.CommentRepository;
 public class ArticleService {
     
     private final ArticleRepository articleRepository;
+    private final ArticleInteractionRepository articleInteractionRepository;
     private final ArticleDraftRepository articleDraftRepository;
     private final ArticleRevisionRepository articleRevisionRepository;
     private final CommentRepository commentRepository;
@@ -32,6 +35,7 @@ public class ArticleService {
 
     public ArticleService(
         ArticleRepository articleRepository,
+        ArticleInteractionRepository articleInteractionRepository,
         ArticleDraftRepository articleDraftRepository,
         ArticleRevisionRepository articleRevisionRepository,
         CommentRepository commentRepository,
@@ -39,6 +43,7 @@ public class ArticleService {
         CurrentUserService currentUserService
     ){
         this.articleRepository = articleRepository;
+        this.articleInteractionRepository = articleInteractionRepository;
         this.articleDraftRepository = articleDraftRepository;
         this.articleRevisionRepository = articleRevisionRepository;
         this.commentRepository = commentRepository;
@@ -90,6 +95,58 @@ public class ArticleService {
 
     public Article getArticle(Long id){
         return articleRepository.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Article not found"));
+    }
+
+    public InteractionStatusResponse getLikeStatus(Long id, String authorizationHeader){
+        getArticle(id);
+        boolean liked = false;
+
+        if(authorizationHeader != null && !authorizationHeader.isBlank()){
+            User currentUser = currentUserService.getCurrentEnabledUser(authorizationHeader);
+            liked = articleInteractionRepository.hasLiked(id, currentUser.getId());
+        }
+
+        return new InteractionStatusResponse(articleInteractionRepository.countLikes(id), liked);
+    }
+
+    public InteractionStatusResponse likeArticle(Long id, String authorizationHeader){
+        getArticle(id);
+        User currentUser = currentUserService.getCurrentEnabledUser(authorizationHeader);
+        articleInteractionRepository.addLike(id, currentUser.getId(), LocalDateTime.now());
+        return new InteractionStatusResponse(articleInteractionRepository.countLikes(id), true);
+    }
+
+    public InteractionStatusResponse unlikeArticle(Long id, String authorizationHeader){
+        getArticle(id);
+        User currentUser = currentUserService.getCurrentEnabledUser(authorizationHeader);
+        articleInteractionRepository.removeLike(id, currentUser.getId());
+        return new InteractionStatusResponse(articleInteractionRepository.countLikes(id), false);
+    }
+
+    public InteractionStatusResponse getFavoriteStatus(Long id, String authorizationHeader){
+        getArticle(id);
+        boolean favorited = false;
+
+        if(authorizationHeader != null && !authorizationHeader.isBlank()){
+            User currentUser = currentUserService.getCurrentEnabledUser(authorizationHeader);
+            favorited = articleInteractionRepository.hasFavorited(id, currentUser.getId());
+        }
+
+        return new InteractionStatusResponse(articleInteractionRepository.countFavorites(id), favorited);
+    }
+
+    public InteractionStatusResponse favoriteArticle(Long id, String authorizationHeader){
+        getArticle(id);
+        User currentUser = currentUserService.getCurrentEnabledUser(authorizationHeader);
+        articleInteractionRepository.addFavorite(id, currentUser.getId(), LocalDateTime.now());
+        return new InteractionStatusResponse(articleInteractionRepository.countFavorites(id), true);
+    }
+
+    public InteractionStatusResponse unfavoriteArticle(Long id, String authorizationHeader){
+        getArticle(id);
+        User currentUser = currentUserService.getCurrentEnabledUser(authorizationHeader);
+        articleInteractionRepository.removeFavorite(id, currentUser.getId());
+        return new InteractionStatusResponse(articleInteractionRepository.countFavorites(id), false);
     }
 
     @Transactional
