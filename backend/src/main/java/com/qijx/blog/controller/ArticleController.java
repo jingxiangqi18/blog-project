@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.PathVariable;
 
 import com.qijx.blog.dto.PageResponse;
+import com.qijx.blog.dto.InteractionStatusResponse;
 import com.qijx.blog.entity.Article;
 import com.qijx.blog.entity.ArticleDraft;
 import com.qijx.blog.entity.ArticleRevision;
@@ -55,6 +56,54 @@ public class ArticleController {
     @GetMapping("/{id}")
     public Article getArticle(@PathVariable Long id){
         return articleService.getArticle(id);
+    }
+
+    @GetMapping("/{id}/likes")
+    public InteractionStatusResponse getLikeStatus(
+        @PathVariable Long id,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ){
+        return articleService.getLikeStatus(id, authorizationHeader);
+    }
+
+    @PostMapping("/{id}/likes")
+    public InteractionStatusResponse likeArticle(
+        @PathVariable Long id,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ){
+        return articleService.likeArticle(id, authorizationHeader);
+    }
+
+    @DeleteMapping("/{id}/likes")
+    public InteractionStatusResponse unlikeArticle(
+        @PathVariable Long id,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ){
+        return articleService.unlikeArticle(id, authorizationHeader);
+    }
+
+    @GetMapping("/{id}/favorites")
+    public InteractionStatusResponse getFavoriteStatus(
+        @PathVariable Long id,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ){
+        return articleService.getFavoriteStatus(id, authorizationHeader);
+    }
+
+    @PostMapping("/{id}/favorites")
+    public InteractionStatusResponse favoriteArticle(
+        @PathVariable Long id,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ){
+        return articleService.favoriteArticle(id, authorizationHeader);
+    }
+
+    @DeleteMapping("/{id}/favorites")
+    public InteractionStatusResponse unfavoriteArticle(
+        @PathVariable Long id,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ){
+        return articleService.unfavoriteArticle(id, authorizationHeader);
     }
 
     @PostMapping("/drafts")

@@ -3,6 +3,7 @@ import ArticleList from '../views/ArticleList.vue'
 import ArticleDetail from '../views/ArticleDetail.vue'
 import ArticleEditor from '../views/ArticleEditor.vue'
 import CategoryManager from '../views/CategoryManager.vue'
+import ProfileCenter from '../views/ProfileCenter.vue'
 import UserManager from '../views/UserManager.vue'
 
 const routes = [
@@ -12,6 +13,7 @@ const routes = [
   { path: '/articles/:id', name: 'article-detail', component: ArticleDetail, props: true },
   { path: '/articles/:id/edit', name: 'article-edit', component: ArticleEditor, props: true },
   { path: '/categories', name: 'categories', component: CategoryManager },
+  { path: '/me', name: 'profile', component: ProfileCenter },
   { path: '/users', name: 'users', component: UserManager },
   { path: '/:pathMatch(.*)*', redirect: '/articles' },
 ]

@@ -7,6 +7,7 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.sql.SQLException;
+import java.sql.Types;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -25,8 +26,8 @@ public class CommentRepository {
 
     public Comment save(Long articleId, Comment comment){
         String sql = """
-                INSERT INTO comments(article_id, author_id, content, created_at, updated_at)
-                VALUES(?, ?, ?, ?, ?)
+                INSERT INTO comments(article_id, author_id, parent_id, content, created_at, updated_at)
+                VALUES(?, ?, ?, ?, ?, ?)
                 """;
 
         KeyHolder keyHolder = new GeneratedKeyHolder();
@@ -39,9 +40,10 @@ public class CommentRepository {
 
             preparedStatement.setLong(1, articleId);
             preparedStatement.setLong(2, comment.getAuthorId());
-            preparedStatement.setString(3, comment.getContent());
-            preparedStatement.setTimestamp(4, Timestamp.valueOf(comment.getCreatedAt()));
-            preparedStatement.setTimestamp(5, Timestamp.valueOf(comment.getUpdatedAt()));
+            preparedStatement.setObject(3, comment.getParentId(), Types.BIGINT);
+            preparedStatement.setString(4, comment.getContent());
+            preparedStatement.setTimestamp(5, Timestamp.valueOf(comment.getCreatedAt()));
+            preparedStatement.setTimestamp(6, Timestamp.valueOf(comment.getUpdatedAt()));
 
             return preparedStatement;
         }, keyHolder);
@@ -59,15 +61,20 @@ public class CommentRepository {
         String sql = """
                 SELECT comments.id,
                        comments.article_id,
+                       comments.parent_id,
                        comments.content,
                        comments.author_id,
                        users.username AS author_name,
+                       parent_users.username AS reply_to_author_name,
+                       (SELECT COUNT(*) FROM comment_likes WHERE comment_likes.comment_id = comments.id) AS like_count,
                        comments.created_at,
                        comments.updated_at
                 FROM comments
                 LEFT JOIN users ON comments.author_id = users.id
+                LEFT JOIN comments parent_comments ON comments.parent_id = parent_comments.id
+                LEFT JOIN users parent_users ON parent_comments.author_id = parent_users.id
                 WHERE comments.article_id = ?
-                ORDER BY comments.id DESC
+                ORDER BY comments.created_at ASC, comments.id ASC
                 """;
 
         return jdbcTemplate.query(sql, this::mapRow, articleId);
@@ -77,12 +84,17 @@ public class CommentRepository {
         Comment comment = new Comment();
 
         Long authorId = rs.getLong("author_id");
+        boolean authorIdWasNull = rs.wasNull();
 
         comment.setId(rs.getLong("id"));
         comment.setArticleId(rs.getLong("article_id"));
+        comment.setAuthorId(authorIdWasNull ? null : authorId);
+        Long parentId = rs.getLong("parent_id");
+        comment.setParentId(rs.wasNull() ? null : parentId);
         comment.setContent(rs.getString("content"));
-        comment.setAuthorId(rs.wasNull() ? null : authorId);
         comment.setAuthorName(rs.getString("author_name"));
+        comment.setReplyToAuthorName(rs.getString("reply_to_author_name"));
+        comment.setLikeCount(rs.getLong("like_count"));
         comment.setCreatedAt(rs.getTimestamp("created_at").toLocalDateTime());
         comment.setUpdatedAt(rs.getTimestamp("updated_at").toLocalDateTime());
 
@@ -93,13 +105,18 @@ public class CommentRepository {
         String sql = """
                 SELECT comments.id,
                        comments.article_id,
+                       comments.parent_id,
                        comments.content,
                        comments.author_id,
                        users.username AS author_name,
+                       parent_users.username AS reply_to_author_name,
+                       (SELECT COUNT(*) FROM comment_likes WHERE comment_likes.comment_id = comments.id) AS like_count,
                        comments.created_at,
                        comments.updated_at
                 FROM comments
                 LEFT JOIN users ON comments.author_id = users.id
+                LEFT JOIN comments parent_comments ON comments.parent_id = parent_comments.id
+                LEFT JOIN users parent_users ON parent_comments.author_id = parent_users.id
                 WHERE comments.id = ? AND comments.article_id = ?
                 """;
 
@@ -150,13 +167,18 @@ public class CommentRepository {
         String sql = """
                 SELECT comments.id,
                        comments.article_id,
+                       comments.parent_id,
                        comments.content,
                        comments.author_id,
                        users.username AS author_name,
+                       parent_users.username AS reply_to_author_name,
+                       (SELECT COUNT(*) FROM comment_likes WHERE comment_likes.comment_id = comments.id) AS like_count,
                        comments.created_at,
                        comments.updated_at
                 FROM comments
                 LEFT JOIN users ON comments.author_id = users.id
+                LEFT JOIN comments parent_comments ON comments.parent_id = parent_comments.id
+                LEFT JOIN users parent_users ON parent_comments.author_id = parent_users.id
                 WHERE comments.author_id = ?
                 ORDER BY comments.updated_at DESC, comments.id DESC
                 """;

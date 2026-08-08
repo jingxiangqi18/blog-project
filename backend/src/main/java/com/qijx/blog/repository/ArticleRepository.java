@@ -245,4 +245,26 @@ public class ArticleRepository {
 
         return jdbcTemplate.query(sql, this::mapRow, authorId);
     }
+
+    public List<Article> findFavoritedByUserId(Long userId){
+        String sql = """
+                SELECT articles.id,
+                       articles.title,
+                       articles.content,
+                       articles.category_id,
+                       articles.author_id,
+                       users.username AS author_name,
+                       categories.name AS category_name,
+                       articles.created_at,
+                       articles.updated_at
+                FROM article_favorites
+                JOIN articles ON article_favorites.article_id = articles.id
+                LEFT JOIN categories ON articles.category_id = categories.id
+                LEFT JOIN users ON articles.author_id = users.id
+                WHERE article_favorites.user_id = ?
+                ORDER BY article_favorites.created_at DESC
+                """;
+
+        return jdbcTemplate.query(sql, this::mapRow, userId);
+    }
 }

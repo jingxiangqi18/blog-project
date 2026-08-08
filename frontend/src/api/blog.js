@@ -20,6 +20,22 @@ export function updateUserEnabled(id, payload) {
   return http.patch(`/users/${id}/enabled`, payload)
 }
 
+export function changeMyPassword(payload) {
+  return http.patch('/users/me/password', payload)
+}
+
+export function listMyArticles() {
+  return http.get('/users/me/articles')
+}
+
+export function listMyComments() {
+  return http.get('/users/me/comments')
+}
+
+export function listMyFavoriteArticles() {
+  return http.get('/users/me/favorites')
+}
+
 export function listArticles(params = {}) {
   return http.get('/articles', { params: { size: 9, ...params } })
 }
@@ -38,6 +54,30 @@ export function updateArticle(id, payload) {
 
 export function deleteArticle(id) {
   return http.delete(`/articles/${id}`)
+}
+
+export function getArticleLikeStatus(id) {
+  return http.get(`/articles/${id}/likes`)
+}
+
+export function likeArticle(id) {
+  return http.post(`/articles/${id}/likes`)
+}
+
+export function unlikeArticle(id) {
+  return http.delete(`/articles/${id}/likes`)
+}
+
+export function getArticleFavoriteStatus(id) {
+  return http.get(`/articles/${id}/favorites`)
+}
+
+export function favoriteArticle(id) {
+  return http.post(`/articles/${id}/favorites`)
+}
+
+export function unfavoriteArticle(id) {
+  return http.delete(`/articles/${id}/favorites`)
 }
 
 export function createArticleDraft(payload) {
@@ -106,6 +146,22 @@ export function listComments(articleId) {
 
 export function createComment(articleId, payload) {
   return http.post(`/articles/${articleId}/comments`, payload)
+}
+
+export function createCommentReply(articleId, commentId, payload) {
+  return http.post(`/articles/${articleId}/comments/${commentId}/replies`, payload)
+}
+
+export function getCommentLikeStatus(articleId, commentId) {
+  return http.get(`/articles/${articleId}/comments/${commentId}/likes`)
+}
+
+export function likeComment(articleId, commentId) {
+  return http.post(`/articles/${articleId}/comments/${commentId}/likes`)
+}
+
+export function unlikeComment(articleId, commentId) {
+  return http.delete(`/articles/${articleId}/comments/${commentId}/likes`)
 }
 
 export function updateComment(articleId, commentId, payload) {
