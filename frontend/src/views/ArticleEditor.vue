@@ -270,7 +270,7 @@
                 :total="referenceTotalElements"
                 :pager-count="5"
                 layout="prev, pager, next"
-                small
+                size="small"
                 @current-change="changeReferencePage"
               />
             </div>
