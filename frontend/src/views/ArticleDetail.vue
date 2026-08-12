@@ -55,7 +55,17 @@
           </div>
         </div>
 
-        <div v-if="wordCount > 0" class="article-body markdown-body" v-html="renderedArticle"></div>
+        <div
+          v-if="wordCount > 0"
+          ref="articleBodyRef"
+          class="article-body markdown-body"
+          v-html="renderedArticle"
+          @click="handleArticleBodyClick"
+          @mouseover="handleArticleLinkMouseOver"
+          @mouseout="handleArticleLinkMouseOut"
+          @focusin="handleArticleLinkFocus"
+          @focusout="hideArticlePreview"
+        ></div>
         <div v-else class="article-body">
           <p class="empty-copy">暂无正文内容</p>
         </div>
@@ -273,11 +283,56 @@
         </div>
       </section>
     </template>
+
+    <teleport to="body">
+      <aside
+        v-if="articlePreview.visible"
+        class="internal-article-preview"
+        :style="articlePreviewStyle"
+        aria-live="polite"
+      >
+        <el-skeleton v-if="articlePreview.loading" :rows="3" animated />
+        <template v-else-if="articlePreview.article">
+          <span>站内文章</span>
+          <strong>{{ articlePreview.article.title }}</strong>
+          <p>{{ articlePreviewSummary }}</p>
+          <small>{{ articlePreview.article.categoryName || '未分类' }} · 点击继续阅读</small>
+        </template>
+        <p v-else class="internal-preview-error">文章预览暂时无法加载</p>
+      </aside>
+    </teleport>
+
+    <el-drawer
+      v-model="knowledgeCardOpen"
+      size="min(520px, 100%)"
+      append-to-body
+      destroy-on-close
+      class="knowledge-card-drawer"
+    >
+      <template #header>
+        <div class="knowledge-card-drawer-heading">
+          <span>Knowledge Card</span>
+          <h3>{{ knowledgeCard?.title || '知识卡片' }}</h3>
+        </div>
+      </template>
+      <el-skeleton v-if="knowledgeCardLoading" :rows="9" animated />
+      <div v-else-if="knowledgeCardError" class="state-panel compact-state">
+        <el-alert type="error" :title="knowledgeCardError" show-icon :closable="false" />
+      </div>
+      <article v-else-if="knowledgeCard" class="knowledge-card-content">
+        <p class="knowledge-card-summary">{{ knowledgeCard.summary }}</p>
+        <div class="markdown-body" v-html="renderMarkdown(knowledgeCard.content || '')"></div>
+        <footer>
+          更新于 {{ formatDate(knowledgeCard.updatedAt) }}
+          <span v-if="knowledgeCard.createdByName"> · {{ knowledgeCard.createdByName }}</span>
+        </footer>
+      </article>
+    </el-drawer>
   </section>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { ThumbsUp } from '@lucide/vue'
@@ -304,6 +359,7 @@ import {
   getArticle,
   getArticleFavoriteStatus,
   getArticleLikeStatus,
+  getKnowledgeCard,
   getCommentLikeStatus,
   likeArticle,
   likeComment,
@@ -315,7 +371,7 @@ import {
 } from '../api/blog'
 import { sessionState, signedIn } from '../state/session'
 import { canManageResource } from '../utils/permissions'
-import { renderMarkdown } from '../utils/markdown'
+import { markdownToPlainText, renderMarkdown } from '../utils/markdown'
 
 const props = defineProps({
   id: {
@@ -340,6 +396,21 @@ const articleFavorite = reactive({ count: 0, active: false, loading: false })
 const commentLikes = reactive({})
 const editingComment = reactive({ id: null, content: '', saving: false })
 const replyingTo = reactive({ id: null, rootId: null, authorName: '', content: '', saving: false })
+const articleBodyRef = ref(null)
+const knowledgeCardOpen = ref(false)
+const knowledgeCardLoading = ref(false)
+const knowledgeCardError = ref('')
+const knowledgeCard = ref(null)
+const articlePreviewCache = new Map()
+const articlePreview = reactive({
+  visible: false,
+  loading: false,
+  article: null,
+  left: 0,
+  top: 0,
+  requestId: 0,
+})
+let articlePreviewTimer = null
 
 const isSignedIn = signedIn
 const currentUserInitial = computed(() => (sessionState.user?.username || 'U').trim().slice(0, 1).toUpperCase())
@@ -360,6 +431,15 @@ const articleTimeLabel = computed(() => (articleWasUpdated.value ? '更新' : '�
 const articleTime = computed(() => {
   return articleWasUpdated.value ? article.value?.updatedAt : article.value?.createdAt || article.value?.updatedAt
 })
+const articlePreviewSummary = computed(() => {
+  const content = articlePreview.article?.content || ''
+  const summary = markdownToPlainText(content)
+  return summary ? `${summary.slice(0, 150)}${summary.length > 150 ? '…' : ''}` : '暂无正文摘要'
+})
+const articlePreviewStyle = computed(() => ({
+  left: `${articlePreview.left}px`,
+  top: `${articlePreview.top}px`,
+}))
 const commentThreads = computed(() => {
   const byId = new Map(comments.value.map((comment) => [Number(comment.id), comment]))
   const roots = []
@@ -424,6 +504,124 @@ function commentAuthorInitial(comment) {
 function requestLogin(message) {
   ElMessage.info(message)
   window.dispatchEvent(new CustomEvent('blog:open-auth'))
+}
+
+function findInternalLink(event, selector){
+  const link = event.target.closest?.(selector)
+  return link && articleBodyRef.value?.contains(link) ? link : null
+}
+
+function positionArticlePreview(link){
+  const rect = link.getBoundingClientRect()
+  const previewWidth = 340
+  const previewHeight = 180
+  articlePreview.left = Math.max(16, Math.min(rect.left, window.innerWidth - previewWidth - 16))
+  articlePreview.top = rect.bottom + 10
+
+  if(articlePreview.top + previewHeight > window.innerHeight){
+    articlePreview.top = Math.max(16, rect.top - previewHeight - 10)
+  }
+}
+
+async function showArticlePreview(link){
+  window.clearTimeout(articlePreviewTimer)
+  const articleId = Number(link.dataset.articleId)
+  if(!Number.isFinite(articleId)){
+    return
+  }
+
+  positionArticlePreview(link)
+  articlePreview.visible = true
+  articlePreview.article = articlePreviewCache.get(articleId) || null
+  articlePreview.loading = !articlePreview.article
+
+  if(articlePreview.article){
+    return
+  }
+
+  const requestId = ++articlePreview.requestId
+  try{
+    const previewArticle = await getArticle(articleId)
+    articlePreviewCache.set(articleId, previewArticle)
+    if(requestId === articlePreview.requestId && articlePreview.visible){
+      articlePreview.article = previewArticle
+    }
+  }catch{
+    if(requestId === articlePreview.requestId){
+      articlePreview.article = null
+    }
+  }finally{
+    if(requestId === articlePreview.requestId){
+      articlePreview.loading = false
+    }
+  }
+}
+
+function hideArticlePreview(){
+  window.clearTimeout(articlePreviewTimer)
+  articlePreviewTimer = window.setTimeout(() => {
+    articlePreview.visible = false
+    articlePreview.requestId += 1
+  }, 120)
+}
+
+function dismissArticlePreview(){
+  window.clearTimeout(articlePreviewTimer)
+  articlePreview.visible = false
+  articlePreview.requestId += 1
+}
+
+function handleArticleLinkMouseOver(event){
+  const link = findInternalLink(event, '.internal-article-link')
+  if(link && !link.contains(event.relatedTarget)){
+    showArticlePreview(link)
+  }
+}
+
+function handleArticleLinkMouseOut(event){
+  const link = findInternalLink(event, '.internal-article-link')
+  if(link && !link.contains(event.relatedTarget)){
+    hideArticlePreview()
+  }
+}
+
+function handleArticleLinkFocus(event){
+  const link = findInternalLink(event, '.internal-article-link')
+  if(link){
+    showArticlePreview(link)
+  }
+}
+
+async function openKnowledgeCard(cardId){
+  dismissArticlePreview()
+  knowledgeCardOpen.value = true
+  knowledgeCardLoading.value = true
+  knowledgeCardError.value = ''
+  knowledgeCard.value = null
+
+  try{
+    knowledgeCard.value = await getKnowledgeCard(cardId)
+  }catch{
+    knowledgeCardError.value = '知识卡片不存在或加载失败'
+  }finally{
+    knowledgeCardLoading.value = false
+  }
+}
+
+function handleArticleBodyClick(event){
+  const articleLink = findInternalLink(event, '.internal-article-link')
+  if(articleLink){
+    event.preventDefault()
+    dismissArticlePreview()
+    router.push(`/articles/${articleLink.dataset.articleId}`)
+    return
+  }
+
+  const cardLink = findInternalLink(event, '.knowledge-card-link')
+  if(cardLink){
+    event.preventDefault()
+    openKnowledgeCard(cardLink.dataset.knowledgeCardId)
+  }
 }
 
 function applyInteraction(target, response) {
@@ -660,5 +858,13 @@ watch(
   },
 )
 
-onMounted(loadArticle)
+watch(
+  () => props.id,
+  () => {
+    knowledgeCardOpen.value = false
+    articlePreview.visible = false
+    loadArticle()
+  },
+  { immediate: true },
+)
 </script>

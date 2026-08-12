@@ -22,7 +22,7 @@ export function currentUserId() {
 }
 
 export function isResourceOwner(resource) {
-  const ownerId = Number(resource?.authorId)
+  const ownerId = Number(resource?.authorId ?? resource?.createdBy)
   const userId = currentUserId()
 
   return userId !== null && Number.isFinite(ownerId) && ownerId === userId

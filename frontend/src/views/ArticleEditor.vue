@@ -57,11 +57,17 @@
                   <el-button :icon="ChatLineRound" @click="insertMarkdown('quote')">引用</el-button>
                   <el-button :icon="Reading" @click="insertMarkdown('code')">代码块</el-button>
                   <el-button :icon="Picture" @click="insertMarkdown('image')">图片</el-button>
+                  <el-button :icon="Link" @mousedown.prevent @click="openReferenceDialog('article')">
+                    链接文章
+                  </el-button>
+                  <el-button :icon="Notebook" @mousedown.prevent @click="openReferenceDialog('card')">
+                    知识卡片
+                  </el-button>
                 </div>
                 <el-radio-group v-model="editorMode" size="small">
-                  <el-radio-button label="edit">编辑</el-radio-button>
-                  <el-radio-button label="split">分屏</el-radio-button>
-                  <el-radio-button label="preview">预览</el-radio-button>
+                  <el-radio-button value="edit">编辑</el-radio-button>
+                  <el-radio-button value="split">分屏</el-radio-button>
+                  <el-radio-button value="preview">预览</el-radio-button>
                 </el-radio-group>
               </div>
 
@@ -204,6 +210,94 @@
       </div>
     </el-form>
 
+    <el-dialog
+      v-model="referenceDialogOpen"
+      :title="referenceDialogTitle"
+      width="620px"
+      append-to-body
+      destroy-on-close
+    >
+      <div class="reference-dialog">
+        <p class="reference-selection-copy">
+          {{ referenceSelection.text ? `将“${referenceSelection.text}”关联到目标` : '未选中文字，将使用目标标题作为链接文字' }}
+        </p>
+
+        <el-tabs v-if="referenceType === 'card'" v-model="cardDialogMode" class="reference-tabs">
+          <el-tab-pane label="选择已有卡片" name="search" />
+          <el-tab-pane label="新建并关联" name="create" />
+        </el-tabs>
+
+        <template v-if="referenceType === 'article' || cardDialogMode === 'search'">
+          <div class="reference-search-row">
+            <el-input
+              v-model="referenceKeyword"
+              clearable
+              :placeholder="referenceType === 'article' ? '搜索文章标题或正文' : '搜索卡片标题或摘要'"
+              @keyup.enter="searchReferenceTargets"
+            />
+            <el-button type="primary" :icon="Search" :loading="referenceLoading" @click="searchReferenceTargets">
+              搜索
+            </el-button>
+          </div>
+
+          <el-skeleton v-if="referenceLoading" :rows="4" animated />
+          <el-alert
+            v-else-if="referenceError"
+            type="error"
+            :title="referenceError"
+            show-icon
+            :closable="false"
+          />
+          <el-empty v-else-if="referenceItems.length === 0" description="没有找到可关联的内容" />
+          <div v-else class="reference-result-list">
+            <button
+              v-for="item in referenceItems"
+              :key="item.id"
+              type="button"
+              class="reference-result-item"
+              @click="insertReference(item)"
+            >
+              <span :class="referenceType === 'article' ? 'article-reference-mark' : 'card-reference-mark'">
+                <el-icon><component :is="referenceType === 'article' ? Link : Notebook" /></el-icon>
+              </span>
+              <span>
+                <strong>{{ item.title }}</strong>
+                <small>{{ referenceTargetSummary(item) }}</small>
+              </span>
+            </button>
+          </div>
+        </template>
+
+        <el-form v-else label-position="top" class="knowledge-card-create-form" @submit.prevent>
+          <el-form-item label="标题" required>
+            <el-input v-model="newKnowledgeCard.title" maxlength="200" show-word-limit />
+          </el-form-item>
+          <el-form-item label="摘要" required>
+            <el-input
+              v-model="newKnowledgeCard.summary"
+              type="textarea"
+              :rows="2"
+              maxlength="500"
+              show-word-limit
+            />
+          </el-form-item>
+          <el-form-item label="完整内容" required>
+            <el-input v-model="newKnowledgeCard.content" type="textarea" :rows="7" />
+          </el-form-item>
+          <div class="reference-create-actions">
+            <el-button
+              type="primary"
+              :icon="Check"
+              :loading="creatingKnowledgeCard"
+              @click="createAndInsertKnowledgeCard"
+            >
+              创建并关联
+            </el-button>
+          </div>
+        </el-form>
+      </div>
+    </el-dialog>
+
     <el-drawer v-model="historyOpen" title="版本历史" size="520px" destroy-on-close>
       <el-skeleton v-if="historyLoading" :rows="8" animated />
       <div v-else-if="historyError" class="state-panel compact-state">
@@ -263,17 +357,21 @@ import {
   Clock,
   Delete,
   DocumentCopy,
+  Link,
   List,
   Memo,
+  Notebook,
   Picture,
   Reading,
   Refresh,
   RefreshLeft,
+  Search,
   Stopwatch,
 } from '@element-plus/icons-vue'
 import {
   createArticle,
   createArticleDraft,
+  createKnowledgeCard,
   deleteArticleDraft,
   deleteArticleDraftById,
   getArticle,
@@ -281,7 +379,9 @@ import {
   getArticleDraftById,
   getArticleRevision,
   listArticleRevisions,
+  listArticles,
   listCategories,
+  listKnowledgeCards,
   restoreArticleRevision,
   saveArticleDraft,
   updateArticle,
@@ -289,7 +389,7 @@ import {
 } from '../api/blog'
 import { sessionState } from '../state/session'
 import { canManageResource, currentUserId, isSignedIn } from '../utils/permissions'
-import { renderMarkdown } from '../utils/markdown'
+import { markdownToPlainText, renderMarkdown } from '../utils/markdown'
 
 const props = defineProps({
   id: {
@@ -327,6 +427,16 @@ const revisions = ref([])
 const selectedRevision = ref(null)
 const revisionDetailLoading = ref(false)
 const restoringRevision = ref(false)
+const referenceDialogOpen = ref(false)
+const referenceType = ref('article')
+const referenceKeyword = ref('')
+const referenceItems = ref([])
+const referenceLoading = ref(false)
+const referenceError = ref('')
+const cardDialogMode = ref('search')
+const creatingKnowledgeCard = ref(false)
+const referenceSelection = reactive({ start: 0, end: 0, text: '' })
+const newKnowledgeCard = reactive({ title: '', summary: '', content: '' })
 const NEW_DRAFT_STORAGE_KEY = 'blogNewArticleDraftId'
 const AUTO_SAVE_DELAY = 1400
 let autoSaveTimer = null
@@ -411,6 +521,9 @@ const workspaceStyle = computed(() => {
 const editorLayoutStyle = computed(() => ({
   '--editor-side-width': `${sidePanelWidth.value}px`,
 }))
+const referenceDialogTitle = computed(() => {
+  return referenceType.value === 'article' ? '链接站内文章' : '关联知识卡片'
+})
 
 const rules = {
   title: [
@@ -708,6 +821,101 @@ onBeforeRouteLeave(() => {
 
   return window.confirm('当前修改尚未自动保存，确定离开编辑页面吗？')
 })
+
+async function openReferenceDialog(type){
+  const textarea = getTextareaElement()
+  const start = textarea?.selectionStart ?? form.content.length
+  const end = textarea?.selectionEnd ?? start
+
+  referenceType.value = type
+  referenceSelection.start = start
+  referenceSelection.end = end
+  referenceSelection.text = form.content.slice(start, end).replace(/\s+/g, ' ').trim()
+  referenceKeyword.value = referenceSelection.text
+  referenceItems.value = []
+  referenceError.value = ''
+  cardDialogMode.value = 'search'
+  newKnowledgeCard.title = referenceSelection.text
+  newKnowledgeCard.summary = ''
+  newKnowledgeCard.content = ''
+  referenceDialogOpen.value = true
+  await searchReferenceTargets()
+}
+
+async function searchReferenceTargets(){
+  referenceLoading.value = true
+  referenceError.value = ''
+
+  try{
+    if(referenceType.value === 'article'){
+      const response = await listArticles({
+        page: 1,
+        size: 20,
+        keyword: referenceKeyword.value.trim(),
+      })
+      referenceItems.value = (response.content || []).filter((item) => String(item.id) !== String(props.id))
+    }else{
+      referenceItems.value = await listKnowledgeCards({ keyword: referenceKeyword.value.trim() })
+    }
+  }catch{
+    referenceItems.value = []
+    referenceError.value = referenceType.value === 'article' ? '文章搜索失败' : '知识卡片搜索失败'
+  }finally{
+    referenceLoading.value = false
+  }
+}
+
+function referenceTargetSummary(item){
+  if(referenceType.value === 'card'){
+    return item.summary || '暂无摘要'
+  }
+
+  const summary = markdownToPlainText(item.content || '')
+  return summary ? summary.slice(0, 100) : '暂无正文摘要'
+}
+
+async function insertReference(item){
+  const scheme = referenceType.value === 'article' ? 'article' : 'card'
+  const rawLabel = referenceSelection.text || item.title
+  const label = rawLabel.replace(/\]/g, '\\]').replace(/[\r\n]+/g, ' ')
+  const referenceMarkdown = `[${label}](${scheme}:${item.id})`
+  const before = form.content.slice(0, referenceSelection.start)
+  const after = form.content.slice(referenceSelection.end)
+
+  form.content = `${before}${referenceMarkdown}${after}`
+  referenceDialogOpen.value = false
+
+  await nextTick()
+  const textarea = getTextareaElement()
+  if(textarea){
+    const cursor = referenceSelection.start + referenceMarkdown.length
+    textarea.focus()
+    textarea.setSelectionRange(cursor, cursor)
+    syncPreviewToCursor()
+  }
+}
+
+async function createAndInsertKnowledgeCard(){
+  const payload = {
+    title: newKnowledgeCard.title.trim(),
+    summary: newKnowledgeCard.summary.trim(),
+    content: newKnowledgeCard.content.trim(),
+  }
+
+  if(!payload.title || !payload.summary || !payload.content){
+    ElMessage.warning('请完整填写知识卡片的标题、摘要和内容')
+    return
+  }
+
+  creatingKnowledgeCard.value = true
+  try{
+    const knowledgeCard = await createKnowledgeCard(payload)
+    await insertReference(knowledgeCard)
+    ElMessage.success('知识卡片已创建并关联')
+  }finally{
+    creatingKnowledgeCard.value = false
+  }
+}
 
 const snippets = {
   heading: {

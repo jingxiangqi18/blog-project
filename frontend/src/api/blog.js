@@ -120,6 +120,26 @@ export function restoreArticleRevision(articleId, revisionId) {
   return http.post(`/articles/${articleId}/revisions/${revisionId}/restore`)
 }
 
+export function listKnowledgeCards(params = {}) {
+  return http.get('/knowledge-cards', { params })
+}
+
+export function getKnowledgeCard(id) {
+  return http.get(`/knowledge-cards/${id}`)
+}
+
+export function createKnowledgeCard(payload) {
+  return http.post('/knowledge-cards', payload)
+}
+
+export function updateKnowledgeCard(id, payload) {
+  return http.put(`/knowledge-cards/${id}`, payload)
+}
+
+export function deleteKnowledgeCard(id) {
+  return http.delete(`/knowledge-cards/${id}`)
+}
+
 export function listCategories() {
   return http.get('/categories')
 }

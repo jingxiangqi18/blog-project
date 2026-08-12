@@ -21,6 +21,10 @@
             <el-icon><CollectionTag /></el-icon>
             <span>分类</span>
           </RouterLink>
+          <RouterLink to="/knowledge" class="nav-item">
+            <el-icon><Notebook /></el-icon>
+            <span>知识库</span>
+          </RouterLink>
           <RouterLink v-if="isSignedIn" to="/me" class="nav-item">
             <el-icon><User /></el-icon>
             <span>我的</span>
@@ -142,7 +146,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowDown, Camera, CollectionTag, Document, EditPen, Lock, SwitchButton, User } from '@element-plus/icons-vue'
+import { ArrowDown, Camera, CollectionTag, Document, EditPen, Lock, Notebook, SwitchButton, User } from '@element-plus/icons-vue'
 import { getCurrentUser, login, register } from './api/blog'
 import { clearSession, finishSessionCheck, sessionState, setSession, signedIn } from './state/session'
 
@@ -179,6 +183,7 @@ const currentView = computed(() => {
   const views = {
     articles: { kicker: 'Today', title: '文章与灵感' },
     categories: { kicker: 'Collections', title: '主题收藏' },
+    knowledge: { kicker: 'Knowledge', title: '知识卡片' },
     profile: { kicker: 'Personal Space', title: '我的留白' },
     users: { kicker: 'People', title: '成员与权限' },
     'article-detail': { kicker: 'Reading', title: '沉浸阅读' },
