@@ -59,7 +59,10 @@
         <div v-else class="profile-record-list">
           <article v-for="article in articles" :key="article.id" class="profile-record">
             <button class="profile-record-main" type="button" @click="$router.push(`/articles/${article.id}`)">
-              <span class="profile-record-eyebrow">{{ article.categoryName || '未分类' }} · {{ formatDate(article.updatedAt) }}</span>
+              <span class="profile-record-eyebrow">
+                {{ article.authorName || sessionState.user?.username || '未知作者' }} · {{ article.categoryName || '未分类' }} ·
+                {{ articleTimeLabel(article) }} {{ formatDate(articleTime(article)) }}
+              </span>
               <strong>{{ article.title }}</strong>
               <p>{{ excerpt(article.content) }}</p>
             </button>
@@ -80,7 +83,10 @@
         <div v-else class="profile-record-list">
           <article v-for="article in favorites" :key="article.id" class="profile-record">
             <button class="profile-record-main" type="button" @click="$router.push(`/articles/${article.id}`)">
-              <span class="profile-record-eyebrow">{{ article.authorName || '留白手记' }} · {{ article.categoryName || '未分类' }}</span>
+              <span class="profile-record-eyebrow">
+                {{ article.authorName || '未知作者' }} · {{ article.categoryName || '未分类' }} ·
+                {{ articleTimeLabel(article) }} {{ formatDate(articleTime(article)) }}
+              </span>
               <strong>{{ article.title }}</strong>
               <p>{{ excerpt(article.content) }}</p>
             </button>
@@ -225,6 +231,20 @@ function formatDate(value) {
   if (!value) return '暂无时间'
   const date = new Date(value)
   return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
+}
+
+function wasArticleUpdated(article) {
+  const createdAt = new Date(article?.createdAt || 0).getTime()
+  const updatedAt = new Date(article?.updatedAt || 0).getTime()
+  return Number.isFinite(createdAt) && Number.isFinite(updatedAt) && updatedAt - createdAt > 1000
+}
+
+function articleTimeLabel(article) {
+  return wasArticleUpdated(article) ? '更新' : '发布'
+}
+
+function articleTime(article) {
+  return wasArticleUpdated(article) ? article.updatedAt : article.createdAt || article.updatedAt
 }
 
 function excerpt(content) {

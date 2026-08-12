@@ -22,7 +22,7 @@
               <span class="category-chip">{{ article.categoryName || '未分类' }}</span>
               <span class="time-chip">
                 <el-icon><Calendar /></el-icon>
-                更新 {{ formatDate(article.updatedAt) }}
+                {{ articleTimeLabel }} {{ formatDate(articleTime) }}
               </span>
             </div>
             <h2>{{ article.title }}</h2>
@@ -70,7 +70,7 @@
               :disabled="articleLike.loading"
               @click="toggleArticleLike"
             >
-              <el-icon><Pointer /></el-icon>
+              <ThumbsUp class="thumbs-up-icon" :size="16" :stroke-width="1.9" />
               <span>{{ articleLike.active ? '已喜欢' : '喜欢' }}</span>
               <strong>{{ articleLike.count }}</strong>
             </button>
@@ -178,7 +178,7 @@
                     :disabled="commentLikeState(thread.root).loading"
                     @click="toggleCommentLike(thread.root)"
                   >
-                    <el-icon><Pointer /></el-icon>
+                    <ThumbsUp class="thumbs-up-icon" :size="15" :stroke-width="1.9" />
                     {{ commentLikeState(thread.root).count || '喜欢' }}
                   </button>
                   <button class="comment-action" type="button" @click="startReply(thread.root, thread.root.id)">
@@ -240,7 +240,7 @@
                       :disabled="commentLikeState(reply).loading"
                       @click="toggleCommentLike(reply)"
                     >
-                      <el-icon><Pointer /></el-icon>
+                      <ThumbsUp class="thumbs-up-icon" :size="15" :stroke-width="1.9" />
                       {{ commentLikeState(reply).count || '喜欢' }}
                     </button>
                     <button class="comment-action" type="button" @click="startReply(reply, thread.root.id)">
@@ -280,6 +280,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
+import { ThumbsUp } from '@lucide/vue'
 import {
   Back,
   Calendar,
@@ -289,7 +290,6 @@ import {
   Delete,
   EditPen,
   MoreFilled,
-  Pointer,
   Reading,
   Refresh,
   Star,
@@ -351,6 +351,15 @@ const articleAuthorName = computed(() => {
   return article.value?.authorName || article.value?.username || article.value?.authorUsername || '留白手记'
 })
 const articleAuthorInitial = computed(() => articleAuthorName.value.trim().slice(0, 1).toUpperCase())
+const articleWasUpdated = computed(() => {
+  const createdAt = new Date(article.value?.createdAt || 0).getTime()
+  const updatedAt = new Date(article.value?.updatedAt || 0).getTime()
+  return Number.isFinite(createdAt) && Number.isFinite(updatedAt) && updatedAt - createdAt > 1000
+})
+const articleTimeLabel = computed(() => (articleWasUpdated.value ? '更新' : '发布'))
+const articleTime = computed(() => {
+  return articleWasUpdated.value ? article.value?.updatedAt : article.value?.createdAt || article.value?.updatedAt
+})
 const commentThreads = computed(() => {
   const byId = new Map(comments.value.map((comment) => [Number(comment.id), comment]))
   const roots = []

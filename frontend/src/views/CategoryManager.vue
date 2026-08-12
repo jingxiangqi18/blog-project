@@ -39,10 +39,11 @@
           @keyup.enter="selectCategory(category)"
         >
           <div class="category-copy">
-            <span class="category-avatar">{{ categoryInitial(category.name) }}</span>
+            <span class="category-symbol" aria-hidden="true">
+              <el-icon><CollectionTag /></el-icon>
+            </span>
             <div>
               <strong>{{ category.name }}</strong>
-              <span>ID {{ category.id }}</span>
             </div>
           </div>
           <div v-if="canManageCategories" class="category-actions">
@@ -83,6 +84,9 @@
       <div v-else class="category-article-list">
         <article v-for="article in categoryArticles" :key="article.id" class="category-article-item">
           <div>
+            <span class="category-article-meta">
+              {{ article.authorName || '未知作者' }} · {{ articleTimeLabel(article) }} {{ formatDate(articleTime(article)) }}
+            </span>
             <strong>{{ article.title }}</strong>
             <span>{{ excerpt(article.content) }}</span>
           </div>
@@ -106,7 +110,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowRight, Delete, Edit, MoreFilled, Plus, Refresh } from '@element-plus/icons-vue'
+import { ArrowRight, CollectionTag, Delete, Edit, MoreFilled, Plus, Refresh } from '@element-plus/icons-vue'
 import { createCategory, deleteCategory, listArticlesByCategory, listCategories, updateCategory } from '../api/blog'
 import { isAdmin } from '../utils/permissions'
 import { markdownToPlainText } from '../utils/markdown'
@@ -138,8 +142,27 @@ function categoryTone(category) {
   return { '--tone': tones[Math.abs(source) % tones.length] }
 }
 
-function categoryInitial(name) {
-  return (name || '#').trim().slice(0, 1).toUpperCase()
+function wasArticleUpdated(article) {
+  const createdAt = new Date(article?.createdAt || 0).getTime()
+  const updatedAt = new Date(article?.updatedAt || 0).getTime()
+  return Number.isFinite(createdAt) && Number.isFinite(updatedAt) && updatedAt - createdAt > 1000
+}
+
+function articleTimeLabel(article) {
+  return wasArticleUpdated(article) ? '更新' : '发布'
+}
+
+function articleTime(article) {
+  return wasArticleUpdated(article) ? article.updatedAt : article.createdAt || article.updatedAt
+}
+
+function formatDate(value) {
+  if (!value) return '时间未知'
+  const date = new Date(value)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}年${month}月${day}日`
 }
 
 function excerpt(content) {

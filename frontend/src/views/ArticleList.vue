@@ -69,7 +69,9 @@
             type="button"
             @click="selectCategory(String(category.id))"
           >
-            <span class="category-filter-dot" :style="articleTone(category)">{{ categoryInitial(category.name) }}</span>
+            <span class="category-filter-icon" :style="articleTone(category)" aria-hidden="true">
+              <el-icon><CollectionTag /></el-icon>
+            </span>
             <span>{{ category.name }}</span>
           </button>
         </div>
@@ -116,10 +118,14 @@
         >
           <div class="article-card-topline">
             <div class="card-meta">
+              <span class="article-author-chip">
+                <span>{{ authorInitial(article) }}</span>
+                {{ articleAuthorName(article) }}
+              </span>
               <span class="category-chip">{{ article.categoryName || '未分类' }}</span>
               <span class="time-chip">
                 <el-icon><Calendar /></el-icon>
-                更新 {{ formatDate(article.updatedAt) }}
+                {{ articleTimeLabel(article) }} {{ formatDate(articleTime(article)) }}
               </span>
             </div>
             <span class="article-sequence">{{ formatSequence(index) }}</span>
@@ -175,7 +181,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowRight, Calendar, Close, DataAnalysis, Delete, EditPen, MoreFilled, Refresh, Search, Stopwatch } from '@element-plus/icons-vue'
+import { ArrowRight, Calendar, Close, CollectionTag, DataAnalysis, Delete, EditPen, MoreFilled, Refresh, Search, Stopwatch } from '@element-plus/icons-vue'
 import { deleteArticle, listArticles, listCategories } from '../api/blog'
 import { canManageResource } from '../utils/permissions'
 import { markdownToPlainText } from '../utils/markdown'
@@ -203,8 +209,8 @@ const sortedArticles = computed(() => {
       return String(a.title || '').localeCompare(String(b.title || ''), 'zh-CN')
     }
 
-    const left = new Date(a.updatedAt || 0).getTime()
-    const right = new Date(b.updatedAt || 0).getTime()
+    const left = new Date(a.updatedAt || a.createdAt || 0).getTime()
+    const right = new Date(b.updatedAt || b.createdAt || 0).getTime()
     return sortMode.value === 'updated-asc' ? left - right : right - left
   })
 })
@@ -262,8 +268,26 @@ function articleTone(article) {
   return { '--tone': tones[Math.abs(source) % tones.length] }
 }
 
-function categoryInitial(name) {
-  return (name || '#').trim().slice(0, 1).toUpperCase()
+function articleAuthorName(article) {
+  return article.authorName || article.username || article.authorUsername || '未知作者'
+}
+
+function authorInitial(article) {
+  return articleAuthorName(article).trim().slice(0, 1).toUpperCase()
+}
+
+function wasArticleUpdated(article) {
+  const createdAt = new Date(article?.createdAt || 0).getTime()
+  const updatedAt = new Date(article?.updatedAt || 0).getTime()
+  return Number.isFinite(createdAt) && Number.isFinite(updatedAt) && updatedAt - createdAt > 1000
+}
+
+function articleTimeLabel(article) {
+  return wasArticleUpdated(article) ? '更新' : '发布'
+}
+
+function articleTime(article) {
+  return wasArticleUpdated(article) ? article.updatedAt : article.createdAt || article.updatedAt
 }
 
 function formatSequence(index) {
@@ -292,7 +316,7 @@ function handleArticleCommand(article, command) {
 
 function formatDate(value) {
   if (!value) {
-    return '暂无更新'
+    return '时间未知'
   }
   const date = new Date(value)
   const year = date.getFullYear()
