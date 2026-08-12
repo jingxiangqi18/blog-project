@@ -1864,6 +1864,22 @@ a {
   border-radius: 8px;
 }
 
+.reference-results {
+  display: grid;
+  gap: 12px;
+}
+
+.reference-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
 .reference-result-item {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr);
