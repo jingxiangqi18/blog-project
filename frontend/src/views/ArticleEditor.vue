@@ -78,18 +78,13 @@
                 :style="workspaceStyle"
               >
                 <div v-show="editorMode !== 'preview'" class="markdown-pane markdown-input-pane">
-                  <textarea
-                    ref="contentTextareaRef"
+                  <MarkdownMentionEditor
+                    ref="contentEditorRef"
                     v-model="form.content"
-                    class="markdown-native-textarea"
-                    spellcheck="false"
-                    placeholder="使用 Markdown 写作，例如 # 标题、- 列表、> 引用、```js 代码块、![描述](图片地址)"
-                    @click="syncPreviewToCursor"
-                    @focus="syncPreviewToCursor"
-                    @keyup="syncPreviewToCursor"
-                    @mouseup="syncPreviewToCursor"
+                    :current-article-id="props.id"
+                    @cursor-change="syncPreviewToCursor"
                     @scroll="syncPreviewByScroll"
-                  ></textarea>
+                  />
                 </div>
                 <button
                   v-if="editorMode === 'split'"
@@ -390,6 +385,7 @@ import {
 import { sessionState } from '../state/session'
 import { canManageResource, currentUserId, isSignedIn } from '../utils/permissions'
 import { markdownToPlainText, renderMarkdown } from '../utils/markdown'
+import MarkdownMentionEditor from '../components/MarkdownMentionEditor.vue'
 
 const props = defineProps({
   id: {
@@ -406,7 +402,7 @@ const loadError = ref('')
 const categoriesLoaded = ref(false)
 const categories = ref([])
 const editorMode = ref('split')
-const contentTextareaRef = ref(null)
+const contentEditorRef = ref(null)
 const previewPaneRef = ref(null)
 const markdownWorkspaceRef = ref(null)
 const editorLayoutRef = ref(null)
@@ -823,9 +819,9 @@ onBeforeRouteLeave(() => {
 })
 
 async function openReferenceDialog(type){
-  const textarea = getTextareaElement()
-  const start = textarea?.selectionStart ?? form.content.length
-  const end = textarea?.selectionEnd ?? start
+  const selection = getEditorSelection()
+  const start = selection.start
+  const end = selection.end
 
   referenceType.value = type
   referenceSelection.start = start
@@ -879,20 +875,17 @@ async function insertReference(item){
   const rawLabel = referenceSelection.text || item.title
   const label = rawLabel.replace(/\]/g, '\\]').replace(/[\r\n]+/g, ' ')
   const referenceMarkdown = `[${label}](${scheme}:${item.id})`
-  const before = form.content.slice(0, referenceSelection.start)
-  const after = form.content.slice(referenceSelection.end)
-
-  form.content = `${before}${referenceMarkdown}${after}`
   referenceDialogOpen.value = false
 
   await nextTick()
-  const textarea = getTextareaElement()
-  if(textarea){
-    const cursor = referenceSelection.start + referenceMarkdown.length
-    textarea.focus()
-    textarea.setSelectionRange(cursor, cursor)
-    syncPreviewToCursor()
-  }
+  const cursor = referenceSelection.start + referenceMarkdown.length
+  contentEditorRef.value?.replaceRange(
+    referenceSelection.start,
+    referenceSelection.end,
+    referenceMarkdown,
+    cursor,
+  )
+  syncPreviewToCursor()
 }
 
 async function createAndInsertKnowledgeCard(){
@@ -942,8 +935,13 @@ const snippets = {
   },
 }
 
-function getTextareaElement() {
-  return contentTextareaRef.value || null
+function getEditorSelection(){
+  return contentEditorRef.value?.getSelection() || {
+    start: form.content.length,
+    end: form.content.length,
+    text: '',
+    line: 0,
+  }
 }
 
 function clampRatio(value) {
@@ -952,11 +950,6 @@ function clampRatio(value) {
   }
 
   return Math.min(1, Math.max(0, value))
-}
-
-function getCursorLine(textarea) {
-  const beforeCursor = form.content.slice(0, textarea.selectionStart)
-  return beforeCursor.split('\n').length - 1
 }
 
 function getSourceLineNodes(preview) {
@@ -1029,24 +1022,12 @@ async function scrollPreviewToSourceLine(sourceLine, fallbackRatio) {
   preview.scrollTop = getPreviewScrollTop(preview, target)
 }
 
-function syncPreviewByScroll() {
-  const textarea = getTextareaElement()
-  if (!textarea) {
-    return
-  }
-
-  const maxSourceScroll = textarea.scrollHeight - textarea.clientHeight
-  const ratio = maxSourceScroll > 0 ? textarea.scrollTop / maxSourceScroll : 0
+function syncPreviewByScroll(ratio = contentEditorRef.value?.getScrollRatio() || 0) {
   scrollPreviewToRatio(ratio)
 }
 
-function syncPreviewToCursor() {
-  const textarea = getTextareaElement()
-  if (!textarea) {
-    return
-  }
-
-  const cursorLine = getCursorLine(textarea)
+function syncPreviewToCursor(selection) {
+  const cursorLine = selection?.line ?? contentEditorRef.value?.getCursorLine() ?? 0
   const totalLines = Math.max(1, form.content.split('\n').length - 1)
   scrollPreviewToSourceLine(cursorLine, cursorLine / totalLines)
 }
@@ -1058,34 +1039,22 @@ async function insertMarkdown(type) {
     return
   }
 
-  const textarea = getTextareaElement()
-  const selectedText = textarea
-    ? form.content.slice(textarea.selectionStart, textarea.selectionEnd)
-    : ''
+  const selection = getEditorSelection()
+  const selectedText = selection.text
   const content = selectedText || snippet.placeholder
   const inserted = `${snippet.prefix}${content}${snippet.suffix || ''}`
 
-  if (!textarea) {
-    form.content = form.content ? `${form.content}\n\n${inserted}` : inserted
-    return
-  }
-
-  const start = textarea.selectionStart
-  const end = textarea.selectionEnd
+  const start = selection.start
+  const end = selection.end
   const before = form.content.slice(0, start)
   const after = form.content.slice(end)
   const needsLeadingBreak = before && !before.endsWith('\n')
   const needsTrailingBreak = after && !after.startsWith('\n')
   const replacement = `${needsLeadingBreak ? '\n' : ''}${inserted}${needsTrailingBreak ? '\n' : ''}`
 
-  form.content = `${before}${replacement}${after}`
-
-  await nextTick()
-
   const selectionStart = start + (needsLeadingBreak ? 1 : 0) + snippet.prefix.length
   const selectionEnd = selectionStart + content.length
-  textarea.focus()
-  textarea.setSelectionRange(selectionStart, selectionEnd)
+  contentEditorRef.value?.replaceRange(start, end, replacement, selectionStart, selectionEnd)
   syncPreviewToCursor()
 }
 
