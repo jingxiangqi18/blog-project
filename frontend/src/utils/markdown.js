@@ -60,7 +60,9 @@ markdown.renderer.rules.safe_color_span_open = (tokens, index) => {
 markdown.renderer.rules.safe_color_span_close = () => '</span>'
 
 const defaultImageRenderer = markdown.renderer.rules.image
-const defaultLinkOpenRenderer = markdown.renderer.rules.link_open
+const defaultLinkOpenRenderer = markdown.renderer.rules.link_open || ((tokens, index, options, env, self) => {
+  return self.renderToken(tokens, index, options)
+})
 
 markdown.core.ruler.after('block', 'source_line_marker', (state) => {
   state.tokens.forEach((token) => {
@@ -82,6 +84,23 @@ markdown.renderer.rules.image = (tokens, index, options, env, self) => {
 markdown.renderer.rules.link_open = (tokens, index, options, env, self) => {
   const hrefIndex = tokens[index].attrIndex('href')
   const href = hrefIndex >= 0 ? tokens[index].attrs[hrefIndex][1] : ''
+
+  const articleMatch = href.match(/^article:(\d+)$/)
+  if (articleMatch) {
+    tokens[index].attrSet('href', `#/articles/${articleMatch[1]}`)
+    tokens[index].attrSet('data-article-id', articleMatch[1])
+    tokens[index].attrJoin('class', 'internal-article-link')
+    return defaultLinkOpenRenderer(tokens, index, options, env, self)
+  }
+
+  const cardMatch = href.match(/^card:(\d+)$/)
+  if (cardMatch) {
+    tokens[index].attrSet('href', `#knowledge-card-${cardMatch[1]}`)
+    tokens[index].attrSet('data-knowledge-card-id', cardMatch[1])
+    tokens[index].attrSet('role', 'button')
+    tokens[index].attrJoin('class', 'knowledge-card-link')
+    return defaultLinkOpenRenderer(tokens, index, options, env, self)
+  }
 
   if (/^https?:\/\//i.test(href)) {
     tokens[index].attrSet('target', '_blank')
