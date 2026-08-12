@@ -302,37 +302,108 @@
       </aside>
     </teleport>
 
-    <el-drawer
-      v-model="knowledgeCardOpen"
-      size="min(520px, 100%)"
-      append-to-body
-      destroy-on-close
-      class="knowledge-card-drawer"
-    >
-      <template #header>
-        <div class="knowledge-card-drawer-heading">
-          <span>Knowledge Card</span>
-          <h3>{{ knowledgeCard?.title || '知识卡片' }}</h3>
+    <teleport to="body">
+      <aside
+        v-if="knowledgeCardPreview.visible"
+        class="knowledge-card-hover-preview"
+        :style="knowledgeCardPreviewStyle"
+        aria-live="polite"
+      >
+        <el-skeleton v-if="knowledgeCardPreview.loading" :rows="3" animated />
+        <template v-else-if="knowledgeCardPreview.card">
+          <span>Knowledge card</span>
+          <strong>{{ knowledgeCardPreview.card.title }}</strong>
+          <p>{{ knowledgeCardPreview.card.summary || knowledgeCardPreviewSummary }}</p>
+          <small>
+            {{ knowledgeCardPreview.card.createdByName || '知识卡片' }} · 点击打开
+          </small>
+        </template>
+        <p v-else class="internal-preview-error">知识卡片预览暂时无法加载</p>
+      </aside>
+
+      <article
+        v-for="cardWindow in knowledgeWindows"
+        :key="cardWindow.key"
+        class="knowledge-floating-window"
+        :class="{ maximized: cardWindow.maximized, loading: cardWindow.loading }"
+        :style="knowledgeWindowStyle(cardWindow)"
+        tabindex="-1"
+        role="dialog"
+        :aria-label="cardWindow.card?.title || '知识卡片'"
+        @pointerdown="bringKnowledgeWindowToFront(cardWindow)"
+        @keydown.esc.stop="closeKnowledgeWindow(cardWindow.key)"
+      >
+        <header
+          class="knowledge-window-bar"
+          @pointerdown="startKnowledgeWindowDrag(cardWindow, $event)"
+          @dblclick="toggleKnowledgeWindowMaximize(cardWindow)"
+        >
+          <span class="knowledge-window-mark">K</span>
+          <span class="knowledge-window-title">
+            <small>Knowledge card</small>
+            <strong>{{ cardWindow.card?.title || '正在加载知识卡片' }}</strong>
+          </span>
+          <span class="knowledge-window-actions" @pointerdown.stop>
+            <button
+              type="button"
+              :aria-label="cardWindow.maximized ? '还原窗口' : '最大化窗口'"
+              :title="cardWindow.maximized ? '还原窗口' : '最大化窗口'"
+              @click="toggleKnowledgeWindowMaximize(cardWindow)"
+            >
+              <el-icon><FullScreen /></el-icon>
+            </button>
+            <button
+              type="button"
+              aria-label="关闭知识卡片"
+              title="关闭"
+              @click="closeKnowledgeWindow(cardWindow.key)"
+            >
+              <el-icon><Close /></el-icon>
+            </button>
+          </span>
+        </header>
+
+        <div
+          class="knowledge-window-body"
+          @click="handleArticleBodyClick"
+          @mouseover="handleArticleLinkMouseOver"
+          @mouseout="handleArticleLinkMouseOut"
+          @focusin="handleArticleLinkFocus"
+          @focusout="hideLinkPreviews"
+        >
+          <el-skeleton v-if="cardWindow.loading" :rows="8" animated />
+          <div v-else-if="cardWindow.error" class="knowledge-window-error">
+            <strong>知识卡片加载失败</strong>
+            <el-button :icon="Refresh" @click="loadKnowledgeWindow(cardWindow)">重新加载</el-button>
+          </div>
+          <template v-else-if="cardWindow.card">
+            <p class="knowledge-card-summary">{{ cardWindow.card.summary }}</p>
+            <div
+              class="markdown-body knowledge-window-markdown"
+              v-html="renderMarkdown(cardWindow.card.content || '')"
+            ></div>
+            <footer class="knowledge-window-meta">
+              <span>{{ cardWindow.card.createdByName || '知识卡片' }}</span>
+              <span>更新于 {{ formatDate(cardWindow.card.updatedAt) }}</span>
+            </footer>
+          </template>
         </div>
-      </template>
-      <el-skeleton v-if="knowledgeCardLoading" :rows="9" animated />
-      <div v-else-if="knowledgeCardError" class="state-panel compact-state">
-        <el-alert type="error" :title="knowledgeCardError" show-icon :closable="false" />
-      </div>
-      <article v-else-if="knowledgeCard" class="knowledge-card-content">
-        <p class="knowledge-card-summary">{{ knowledgeCard.summary }}</p>
-        <div class="markdown-body" v-html="renderMarkdown(knowledgeCard.content || '')"></div>
-        <footer>
-          更新于 {{ formatDate(knowledgeCard.updatedAt) }}
-          <span v-if="knowledgeCard.createdByName"> · {{ knowledgeCard.createdByName }}</span>
-        </footer>
+
+        <button
+          v-if="!cardWindow.maximized"
+          type="button"
+          class="knowledge-window-resizer"
+          aria-label="拖拽调整知识卡片大小"
+          title="拖拽调整大小"
+          @pointerdown.stop="startKnowledgeWindowResize(cardWindow, $event)"
+        ></button>
       </article>
-    </el-drawer>
+    </teleport>
   </section>
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { ThumbsUp } from '@lucide/vue'
@@ -344,6 +415,7 @@ import {
   Close,
   Delete,
   EditPen,
+  FullScreen,
   MoreFilled,
   Reading,
   Refresh,
@@ -397,11 +469,9 @@ const commentLikes = reactive({})
 const editingComment = reactive({ id: null, content: '', saving: false })
 const replyingTo = reactive({ id: null, rootId: null, authorName: '', content: '', saving: false })
 const articleBodyRef = ref(null)
-const knowledgeCardOpen = ref(false)
-const knowledgeCardLoading = ref(false)
-const knowledgeCardError = ref('')
-const knowledgeCard = ref(null)
 const articlePreviewCache = new Map()
+const knowledgeCardCache = new Map()
+const knowledgeWindows = reactive([])
 const articlePreview = reactive({
   visible: false,
   loading: false,
@@ -410,7 +480,19 @@ const articlePreview = reactive({
   top: 0,
   requestId: 0,
 })
+const knowledgeCardPreview = reactive({
+  visible: false,
+  loading: false,
+  card: null,
+  left: 0,
+  top: 0,
+  requestId: 0,
+})
 let articlePreviewTimer = null
+let knowledgeCardPreviewTimer = null
+let knowledgeWindowSequence = 0
+let knowledgeWindowZIndex = 3600
+let activeKnowledgeWindowInteraction = null
 
 const isSignedIn = signedIn
 const currentUserInitial = computed(() => (sessionState.user?.username || 'U').trim().slice(0, 1).toUpperCase())
@@ -439,6 +521,15 @@ const articlePreviewSummary = computed(() => {
 const articlePreviewStyle = computed(() => ({
   left: `${articlePreview.left}px`,
   top: `${articlePreview.top}px`,
+}))
+const knowledgeCardPreviewSummary = computed(() => {
+  const content = knowledgeCardPreview.card?.content || ''
+  const summary = markdownToPlainText(content)
+  return summary ? `${summary.slice(0, 130)}${summary.length > 130 ? '…' : ''}` : '暂无内容摘要'
+})
+const knowledgeCardPreviewStyle = computed(() => ({
+  left: `${knowledgeCardPreview.left}px`,
+  top: `${knowledgeCardPreview.top}px`,
 }))
 const commentThreads = computed(() => {
   const byId = new Map(comments.value.map((comment) => [Number(comment.id), comment]))
@@ -508,7 +599,7 @@ function requestLogin(message) {
 
 function findInternalLink(event, selector){
   const link = event.target.closest?.(selector)
-  return link && articleBodyRef.value?.contains(link) ? link : null
+  return link && event.currentTarget?.contains(link) ? link : null
 }
 
 function positionArticlePreview(link){
@@ -571,10 +662,86 @@ function dismissArticlePreview(){
   articlePreview.requestId += 1
 }
 
+function positionKnowledgeCardPreview(link){
+  const rect = link.getBoundingClientRect()
+  const previewWidth = 320
+  const previewHeight = 170
+  knowledgeCardPreview.left = Math.max(16, Math.min(rect.left, window.innerWidth - previewWidth - 16))
+  knowledgeCardPreview.top = rect.bottom + 10
+
+  if(knowledgeCardPreview.top + previewHeight > window.innerHeight){
+    knowledgeCardPreview.top = Math.max(16, rect.top - previewHeight - 10)
+  }
+}
+
+async function showKnowledgeCardPreview(link){
+  window.clearTimeout(knowledgeCardPreviewTimer)
+  const cardId = Number(link.dataset.knowledgeCardId)
+  if(!Number.isFinite(cardId)){
+    return
+  }
+
+  positionKnowledgeCardPreview(link)
+  knowledgeCardPreview.visible = true
+  knowledgeCardPreview.card = knowledgeCardCache.get(cardId) || null
+  knowledgeCardPreview.loading = !knowledgeCardPreview.card
+
+  if(knowledgeCardPreview.card){
+    return
+  }
+
+  const requestId = ++knowledgeCardPreview.requestId
+  try{
+    const card = await getKnowledgeCard(cardId)
+    knowledgeCardCache.set(cardId, card)
+    if(requestId === knowledgeCardPreview.requestId && knowledgeCardPreview.visible){
+      knowledgeCardPreview.card = card
+    }
+  }catch{
+    if(requestId === knowledgeCardPreview.requestId){
+      knowledgeCardPreview.card = null
+    }
+  }finally{
+    if(requestId === knowledgeCardPreview.requestId){
+      knowledgeCardPreview.loading = false
+    }
+  }
+}
+
+function hideKnowledgeCardPreview(){
+  window.clearTimeout(knowledgeCardPreviewTimer)
+  knowledgeCardPreviewTimer = window.setTimeout(() => {
+    knowledgeCardPreview.visible = false
+    knowledgeCardPreview.requestId += 1
+  }, 120)
+}
+
+function dismissKnowledgeCardPreview(){
+  window.clearTimeout(knowledgeCardPreviewTimer)
+  knowledgeCardPreview.visible = false
+  knowledgeCardPreview.requestId += 1
+}
+
+function hideLinkPreviews(){
+  hideArticlePreview()
+  hideKnowledgeCardPreview()
+}
+
+function dismissLinkPreviews(){
+  dismissArticlePreview()
+  dismissKnowledgeCardPreview()
+}
+
 function handleArticleLinkMouseOver(event){
   const link = findInternalLink(event, '.internal-article-link')
   if(link && !link.contains(event.relatedTarget)){
     showArticlePreview(link)
+    return
+  }
+
+  const cardLink = findInternalLink(event, '.knowledge-card-link')
+  if(cardLink && !cardLink.contains(event.relatedTarget)){
+    showKnowledgeCardPreview(cardLink)
   }
 }
 
@@ -582,6 +749,12 @@ function handleArticleLinkMouseOut(event){
   const link = findInternalLink(event, '.internal-article-link')
   if(link && !link.contains(event.relatedTarget)){
     hideArticlePreview()
+    return
+  }
+
+  const cardLink = findInternalLink(event, '.knowledge-card-link')
+  if(cardLink && !cardLink.contains(event.relatedTarget)){
+    hideKnowledgeCardPreview()
   }
 }
 
@@ -589,30 +762,222 @@ function handleArticleLinkFocus(event){
   const link = findInternalLink(event, '.internal-article-link')
   if(link){
     showArticlePreview(link)
+    return
+  }
+
+  const cardLink = findInternalLink(event, '.knowledge-card-link')
+  if(cardLink){
+    showKnowledgeCardPreview(cardLink)
   }
 }
 
-async function openKnowledgeCard(cardId){
-  dismissArticlePreview()
-  knowledgeCardOpen.value = true
-  knowledgeCardLoading.value = true
-  knowledgeCardError.value = ''
-  knowledgeCard.value = null
+function constrain(value, min, max){
+  return Math.min(Math.max(value, min), Math.max(min, max))
+}
 
-  try{
-    knowledgeCard.value = await getKnowledgeCard(cardId)
-  }catch{
-    knowledgeCardError.value = '知识卡片不存在或加载失败'
-  }finally{
-    knowledgeCardLoading.value = false
+function clampKnowledgeWindow(cardWindow){
+  const margin = 8
+  const minWidth = Math.max(240, Math.min(320, window.innerWidth - margin * 2))
+  const minHeight = Math.max(200, Math.min(260, window.innerHeight - margin * 2))
+
+  if(cardWindow.maximized){
+    cardWindow.x = 12
+    cardWindow.y = 12
+    cardWindow.width = Math.max(minWidth, window.innerWidth - 24)
+    cardWindow.height = Math.max(minHeight, window.innerHeight - 24)
+    return
   }
+
+  cardWindow.width = constrain(cardWindow.width, minWidth, window.innerWidth - margin * 2)
+  cardWindow.height = constrain(cardWindow.height, minHeight, window.innerHeight - margin * 2)
+  cardWindow.x = constrain(cardWindow.x, margin, window.innerWidth - cardWindow.width - margin)
+  cardWindow.y = constrain(cardWindow.y, margin, window.innerHeight - cardWindow.height - margin)
+}
+
+function createKnowledgeWindow(cardId, anchorRect){
+  const width = Math.min(480, window.innerWidth - 24)
+  const height = Math.min(590, window.innerHeight - 32)
+  const offset = (knowledgeWindows.length % 5) * 24
+  let x = window.innerWidth - width - 28 - offset
+  let y = 48 + offset
+
+  if(anchorRect){
+    if(window.innerWidth - anchorRect.right >= width + 20){
+      x = anchorRect.right + 12
+    }else if(anchorRect.left >= width + 20){
+      x = anchorRect.left - width - 12
+    }
+    y = anchorRect.top - 24 + offset
+  }
+
+  const cardWindow = reactive({
+    key: ++knowledgeWindowSequence,
+    cardId,
+    card: knowledgeCardCache.get(cardId) || null,
+    loading: !knowledgeCardCache.has(cardId),
+    error: '',
+    x,
+    y,
+    width,
+    height,
+    zIndex: ++knowledgeWindowZIndex,
+    maximized: false,
+    restoreBounds: null,
+  })
+  clampKnowledgeWindow(cardWindow)
+  return cardWindow
+}
+
+function bringKnowledgeWindowToFront(cardWindow){
+  cardWindow.zIndex = ++knowledgeWindowZIndex
+}
+
+function knowledgeWindowStyle(cardWindow){
+  return {
+    left: `${cardWindow.x}px`,
+    top: `${cardWindow.y}px`,
+    width: `${cardWindow.width}px`,
+    height: `${cardWindow.height}px`,
+    zIndex: cardWindow.zIndex,
+  }
+}
+
+async function loadKnowledgeWindow(cardWindow){
+  cardWindow.loading = true
+  cardWindow.error = ''
+  try{
+    const card = await getKnowledgeCard(cardWindow.cardId)
+    knowledgeCardCache.set(cardWindow.cardId, card)
+    if(knowledgeWindows.includes(cardWindow)){
+      cardWindow.card = card
+    }
+  }catch{
+    if(knowledgeWindows.includes(cardWindow)){
+      cardWindow.error = '知识卡片不存在或加载失败'
+    }
+  }finally{
+    if(knowledgeWindows.includes(cardWindow)){
+      cardWindow.loading = false
+    }
+  }
+}
+
+function openKnowledgeCard(cardId, anchorRect){
+  dismissLinkPreviews()
+  const normalizedCardId = Number(cardId)
+  if(!Number.isFinite(normalizedCardId)){
+    return
+  }
+
+  const existingWindow = knowledgeWindows.find((item) => item.cardId === normalizedCardId)
+  if(existingWindow){
+    bringKnowledgeWindowToFront(existingWindow)
+    return
+  }
+
+  const cardWindow = createKnowledgeWindow(normalizedCardId, anchorRect)
+  knowledgeWindows.push(cardWindow)
+  if(!cardWindow.card){
+    loadKnowledgeWindow(cardWindow)
+  }
+}
+
+function closeKnowledgeWindow(key){
+  const index = knowledgeWindows.findIndex((item) => item.key === key)
+  if(index >= 0){
+    knowledgeWindows.splice(index, 1)
+  }
+}
+
+function toggleKnowledgeWindowMaximize(cardWindow){
+  bringKnowledgeWindowToFront(cardWindow)
+  if(cardWindow.maximized){
+    cardWindow.maximized = false
+    Object.assign(cardWindow, cardWindow.restoreBounds)
+    cardWindow.restoreBounds = null
+    clampKnowledgeWindow(cardWindow)
+    return
+  }
+
+  cardWindow.restoreBounds = {
+    x: cardWindow.x,
+    y: cardWindow.y,
+    width: cardWindow.width,
+    height: cardWindow.height,
+  }
+  cardWindow.maximized = true
+  clampKnowledgeWindow(cardWindow)
+}
+
+function beginKnowledgeWindowInteraction(cardWindow, type, event){
+  if(event.button !== 0 || (type === 'move' && cardWindow.maximized)){
+    return
+  }
+
+  event.preventDefault()
+  bringKnowledgeWindowToFront(cardWindow)
+  activeKnowledgeWindowInteraction = {
+    cardWindow,
+    type,
+    startX: event.clientX,
+    startY: event.clientY,
+    x: cardWindow.x,
+    y: cardWindow.y,
+    width: cardWindow.width,
+    height: cardWindow.height,
+  }
+  document.body.classList.add('knowledge-window-interacting')
+  window.addEventListener('pointermove', handleKnowledgeWindowPointerMove)
+  window.addEventListener('pointerup', stopKnowledgeWindowInteraction, { once: true })
+  window.addEventListener('pointercancel', stopKnowledgeWindowInteraction, { once: true })
+}
+
+function startKnowledgeWindowDrag(cardWindow, event){
+  if(event.target.closest('button')){
+    return
+  }
+  beginKnowledgeWindowInteraction(cardWindow, 'move', event)
+}
+
+function startKnowledgeWindowResize(cardWindow, event){
+  beginKnowledgeWindowInteraction(cardWindow, 'resize', event)
+}
+
+function handleKnowledgeWindowPointerMove(event){
+  const interaction = activeKnowledgeWindowInteraction
+  if(!interaction){
+    return
+  }
+
+  const deltaX = event.clientX - interaction.startX
+  const deltaY = event.clientY - interaction.startY
+  if(interaction.type === 'move'){
+    interaction.cardWindow.x = interaction.x + deltaX
+    interaction.cardWindow.y = interaction.y + deltaY
+  }else{
+    interaction.cardWindow.width = interaction.width + deltaX
+    interaction.cardWindow.height = interaction.height + deltaY
+  }
+  clampKnowledgeWindow(interaction.cardWindow)
+}
+
+function stopKnowledgeWindowInteraction(){
+  activeKnowledgeWindowInteraction = null
+  document.body.classList.remove('knowledge-window-interacting')
+  window.removeEventListener('pointermove', handleKnowledgeWindowPointerMove)
+  window.removeEventListener('pointerup', stopKnowledgeWindowInteraction)
+  window.removeEventListener('pointercancel', stopKnowledgeWindowInteraction)
+}
+
+function handleKnowledgeViewportResize(){
+  knowledgeWindows.forEach(clampKnowledgeWindow)
 }
 
 function handleArticleBodyClick(event){
   const articleLink = findInternalLink(event, '.internal-article-link')
   if(articleLink){
     event.preventDefault()
-    dismissArticlePreview()
+    dismissLinkPreviews()
     router.push(`/articles/${articleLink.dataset.articleId}`)
     return
   }
@@ -620,7 +985,7 @@ function handleArticleBodyClick(event){
   const cardLink = findInternalLink(event, '.knowledge-card-link')
   if(cardLink){
     event.preventDefault()
-    openKnowledgeCard(cardLink.dataset.knowledgeCardId)
+    openKnowledgeCard(cardLink.dataset.knowledgeCardId, cardLink.getBoundingClientRect())
   }
 }
 
@@ -861,10 +1226,21 @@ watch(
 watch(
   () => props.id,
   () => {
-    knowledgeCardOpen.value = false
-    articlePreview.visible = false
+    knowledgeWindows.splice(0)
+    dismissLinkPreviews()
     loadArticle()
   },
   { immediate: true },
 )
+
+onMounted(() => {
+  window.addEventListener('resize', handleKnowledgeViewportResize)
+})
+
+onBeforeUnmount(() => {
+  window.clearTimeout(articlePreviewTimer)
+  window.clearTimeout(knowledgeCardPreviewTimer)
+  window.removeEventListener('resize', handleKnowledgeViewportResize)
+  stopKnowledgeWindowInteraction()
+})
 </script>
