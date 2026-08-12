@@ -4,7 +4,7 @@
 
 <script setup>
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { autocompletion, completionKeymap } from '@codemirror/autocomplete'
+import { autocompletion, completionKeymap, startCompletion } from '@codemirror/autocomplete'
 import { markdown } from '@codemirror/lang-markdown'
 import { EditorState, RangeSetBuilder } from '@codemirror/state'
 import { Decoration, EditorView, ViewPlugin, WidgetType, keymap, placeholder as editorPlaceholder } from '@codemirror/view'
@@ -30,6 +30,15 @@ let editorView = null
 const articleSection = { name: '站内文章', rank: 1 }
 const cardSection = { name: '知识卡片', rank: 2 }
 const referencePattern = /\[([^\]\n]+)\]\((article|card):(\d+)\)/g
+const ARTICLE_PAGE_SIZE = 10
+const articleMentionState = {
+  keyword: '',
+  requestedPage: 1,
+  loadedPage: 0,
+  totalPages: 1,
+  totalElements: 0,
+  articles: [],
+}
 
 class ReferenceWidget extends WidgetType {
   constructor(label, type){
@@ -114,6 +123,20 @@ function referenceApply(type, item){
   }
 }
 
+function resetArticleMentionState(keyword){
+  articleMentionState.keyword = keyword
+  articleMentionState.requestedPage = 1
+  articleMentionState.loadedPage = 0
+  articleMentionState.totalPages = 1
+  articleMentionState.totalElements = 0
+  articleMentionState.articles = []
+}
+
+function loadMoreArticles(view){
+  articleMentionState.requestedPage = articleMentionState.loadedPage + 1
+  window.setTimeout(() => startCompletion(view), 0)
+}
+
 async function mentionCompletionSource(context){
   const line = context.state.doc.lineAt(context.pos)
   const sourceBeforeCursor = context.state.sliceDoc(line.from, context.pos)
@@ -125,19 +148,37 @@ async function mentionCompletionSource(context){
 
   const from = context.pos - match[0].length
   const keyword = match[1].trim()
+
+  if(articleMentionState.keyword !== keyword){
+    resetArticleMentionState(keyword)
+  }
+
+  const requestedPage = articleMentionState.requestedPage
   const [articlesResult, cardsResult] = await Promise.allSettled([
-    listArticles({ page: 1, size: 10, keyword }),
+    listArticles({ page: requestedPage, size: ARTICLE_PAGE_SIZE, keyword }),
     listKnowledgeCards({ keyword }),
   ])
 
-  if(context.aborted){
+  if(context.aborted || articleMentionState.keyword !== keyword || articleMentionState.requestedPage !== requestedPage){
     return null
   }
 
-  const articles = articlesResult.status === 'fulfilled'
-    ? (articlesResult.value.content || []).filter((article) => String(article.id) !== String(props.currentArticleId))
-    : []
+  if(articlesResult.status === 'fulfilled'){
+    const response = articlesResult.value
+    const pageArticles = (response.content || [])
+      .filter((article) => String(article.id) !== String(props.currentArticleId))
+    const articleMap = new Map(articleMentionState.articles.map((article) => [String(article.id), article]))
+
+    pageArticles.forEach((article) => articleMap.set(String(article.id), article))
+    articleMentionState.articles = [...articleMap.values()]
+    articleMentionState.loadedPage = requestedPage
+    articleMentionState.totalPages = response.totalPages || 1
+    articleMentionState.totalElements = response.totalElements || articleMentionState.articles.length
+  }
+
+  const articles = articleMentionState.articles
   const cards = cardsResult.status === 'fulfilled' ? cardsResult.value : []
+  const hasMoreArticles = articleMentionState.loadedPage < articleMentionState.totalPages
 
   return {
     from,
@@ -152,6 +193,15 @@ async function mentionCompletionSource(context){
         boost: 2,
         apply: referenceApply('article', article),
       })),
+      ...(hasMoreArticles ? [{
+        label: '加载更多文章',
+        detail: `第 ${articleMentionState.loadedPage + 1} / ${articleMentionState.totalPages} 页`,
+        info: `共 ${articleMentionState.totalElements} 篇文章，选择后继续加载候选项`,
+        section: articleSection,
+        type: 'text',
+        boost: -10,
+        apply: loadMoreArticles,
+      }] : []),
       ...cards.map((card) => ({
         label: card.title,
         detail: card.summary,

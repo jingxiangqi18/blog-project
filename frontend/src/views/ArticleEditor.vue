@@ -228,9 +228,9 @@
               v-model="referenceKeyword"
               clearable
               :placeholder="referenceType === 'article' ? '搜索文章标题或正文' : '搜索卡片标题或摘要'"
-              @keyup.enter="searchReferenceTargets"
+              @keyup.enter="startReferenceSearch"
             />
-            <el-button type="primary" :icon="Search" :loading="referenceLoading" @click="searchReferenceTargets">
+            <el-button type="primary" :icon="Search" :loading="referenceLoading" @click="startReferenceSearch">
               搜索
             </el-button>
           </div>
@@ -244,22 +244,36 @@
             :closable="false"
           />
           <el-empty v-else-if="referenceItems.length === 0" description="没有找到可关联的内容" />
-          <div v-else class="reference-result-list">
-            <button
-              v-for="item in referenceItems"
-              :key="item.id"
-              type="button"
-              class="reference-result-item"
-              @click="insertReference(item)"
-            >
-              <span :class="referenceType === 'article' ? 'article-reference-mark' : 'card-reference-mark'">
-                <el-icon><component :is="referenceType === 'article' ? Link : Notebook" /></el-icon>
-              </span>
-              <span>
-                <strong>{{ item.title }}</strong>
-                <small>{{ referenceTargetSummary(item) }}</small>
-              </span>
-            </button>
+          <div v-else class="reference-results">
+            <div class="reference-result-list">
+              <button
+                v-for="item in referenceItems"
+                :key="item.id"
+                type="button"
+                class="reference-result-item"
+                @click="insertReference(item)"
+              >
+                <span :class="referenceType === 'article' ? 'article-reference-mark' : 'card-reference-mark'">
+                  <el-icon><component :is="referenceType === 'article' ? Link : Notebook" /></el-icon>
+                </span>
+                <span>
+                  <strong>{{ item.title }}</strong>
+                  <small>{{ referenceTargetSummary(item) }}</small>
+                </span>
+              </button>
+            </div>
+            <div v-if="referenceType === 'article' && referenceTotalPages > 1" class="reference-pagination">
+              <span>共 {{ referenceTotalElements }} 篇文章</span>
+              <el-pagination
+                :current-page="referencePage"
+                :page-size="REFERENCE_PAGE_SIZE"
+                :total="referenceTotalElements"
+                :pager-count="5"
+                layout="prev, pager, next"
+                small
+                @current-change="changeReferencePage"
+              />
+            </div>
           </div>
         </template>
 
@@ -429,12 +443,16 @@ const referenceKeyword = ref('')
 const referenceItems = ref([])
 const referenceLoading = ref(false)
 const referenceError = ref('')
+const referencePage = ref(1)
+const referenceTotalPages = ref(1)
+const referenceTotalElements = ref(0)
 const cardDialogMode = ref('search')
 const creatingKnowledgeCard = ref(false)
 const referenceSelection = reactive({ start: 0, end: 0, text: '' })
 const newKnowledgeCard = reactive({ title: '', summary: '', content: '' })
 const NEW_DRAFT_STORAGE_KEY = 'blogNewArticleDraftId'
 const AUTO_SAVE_DELAY = 1400
+const REFERENCE_PAGE_SIZE = 20
 let autoSaveTimer = null
 let autoSaveDebounceTimer = null
 const form = reactive({
@@ -830,12 +848,25 @@ async function openReferenceDialog(type){
   referenceKeyword.value = referenceSelection.text
   referenceItems.value = []
   referenceError.value = ''
+  referencePage.value = 1
+  referenceTotalPages.value = 1
+  referenceTotalElements.value = 0
   cardDialogMode.value = 'search'
   newKnowledgeCard.title = referenceSelection.text
   newKnowledgeCard.summary = ''
   newKnowledgeCard.content = ''
   referenceDialogOpen.value = true
   await searchReferenceTargets()
+}
+
+function startReferenceSearch(){
+  referencePage.value = 1
+  searchReferenceTargets()
+}
+
+function changeReferencePage(page){
+  referencePage.value = page
+  searchReferenceTargets()
 }
 
 async function searchReferenceTargets(){
@@ -845,13 +876,17 @@ async function searchReferenceTargets(){
   try{
     if(referenceType.value === 'article'){
       const response = await listArticles({
-        page: 1,
-        size: 20,
+        page: referencePage.value,
+        size: REFERENCE_PAGE_SIZE,
         keyword: referenceKeyword.value.trim(),
       })
       referenceItems.value = (response.content || []).filter((item) => String(item.id) !== String(props.id))
+      referenceTotalPages.value = response.totalPages || 1
+      referenceTotalElements.value = response.totalElements || referenceItems.value.length
     }else{
       referenceItems.value = await listKnowledgeCards({ keyword: referenceKeyword.value.trim() })
+      referenceTotalPages.value = 1
+      referenceTotalElements.value = referenceItems.value.length
     }
   }catch{
     referenceItems.value = []
