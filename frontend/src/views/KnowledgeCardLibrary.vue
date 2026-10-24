@@ -4,7 +4,6 @@
       <div>
         <p class="section-kicker">Knowledge Notes</p>
         <h2>知识库</h2>
-        <p>把可复用的概念、结论和代码片段整理成卡片。</p>
       </div>
       <div class="metric-card">
         <span>{{ cards.length }}</span>
@@ -100,7 +99,7 @@
             <h1>{{ selectedCard.title }}</h1>
             <p>{{ selectedCard.summary }}</p>
           </div>
-          <div class="knowledge-reader-body markdown-body" v-html="renderMarkdown(selectedCard.content || '')"></div>
+          <MarkdownContent class="knowledge-reader-body" :content="selectedCard.content || ''" :title="selectedCard.title" />
         </template>
       </article>
     </section>
@@ -145,11 +144,11 @@
                 placeholder="支持标题、列表、引用、代码块和图片语法"
                 spellcheck="false"
               ></textarea>
-              <div
+              <MarkdownContent
                 v-show="editorMode !== 'edit'"
-                class="knowledge-editor-preview markdown-body"
-                v-html="renderMarkdown(form.content || '')"
-              ></div>
+                class="knowledge-editor-preview"
+                :content="form.content || ''"
+              />
             </div>
           </div>
         </el-form-item>
@@ -176,8 +175,8 @@ import {
   updateKnowledgeCard,
 } from '../api/blog'
 import { signedIn } from '../state/session'
+import MarkdownContent from '../components/MarkdownContent.vue'
 import { canManageResource } from '../utils/permissions'
-import { renderMarkdown } from '../utils/markdown'
 
 const isSignedIn = signedIn
 const cards = ref([])
@@ -323,6 +322,7 @@ function resetEditor() {
 
 async function saveCard() {
   await formRef.value.validate()
+  const wasEditing = Boolean(editingId.value)
   const payload = {
     title: form.title.trim(),
     summary: form.summary.trim(),
@@ -336,7 +336,7 @@ async function saveCard() {
     editorOpen.value = false
     selectedCardId.value = saved.id
     await loadCards()
-    ElMessage.success(editingId.value ? '知识卡片已更新' : '知识卡片已创建')
+    ElMessage.success(wasEditing ? '知识卡片已更新' : '知识卡片已创建')
   } finally {
     saving.value = false
   }

@@ -1,27 +1,22 @@
 <template>
-  <section class="page-stack">
-    <div class="hero-panel article-hero">
-      <div class="hero-copy">
-        <p class="section-kicker">Curated Notes</p>
-        <h2>文章与灵感</h2>
-      </div>
-      <div class="hero-side">
-        <div class="metric-card">
-          <span>{{ pageState.totalElements }}</span>
-          <small>全部文章</small>
-        </div>
-        <div class="metric-card">
-          <span>{{ categories.length }}</span>
-          <small>分类</small>
-        </div>
-        <div class="metric-card">
-          <span>{{ totalWords }}</span>
-          <small>正文字符</small>
-        </div>
-      </div>
-    </div>
+  <section class="page-stack article-list-page" :class="{ 'life-feed': sectionSlug === 'life' }">
+    <header class="listing-heading">
+      <p class="section-kicker"><span class="edition-mark" aria-hidden="true" />{{ activeSection?.slug || 'The journal' }}</p>
+      <h1>{{ activeSection?.name || '全部手记' }}</h1>
+      <p v-if="activeSection?.description">{{ activeSection.description }}</p>
+      <div class="listing-quick-links"><RouterLink :to="{ path: '/collections', query: { sectionSlug: sectionSlug || undefined } }"><Library :size="15" />系列专题 <el-icon><ArrowRight /></el-icon></RouterLink><RouterLink to="/knowledge"><Layers :size="15" />知识卡片 <el-icon><ArrowRight /></el-icon></RouterLink><span>{{ pageState.totalElements }} 篇手记</span></div>
+    </header>
 
-    <section class="panel discovery-panel">
+    <section class="content-discovery">
+      <nav class="section-navigation" aria-label="内容分区">
+        <FluidTabs :model-value="sectionSlug" :items="sectionOptions" label="内容分区" @update:model-value="selectSection" />
+        <RouterLink to="/collections">系列目录 <el-icon><ArrowRight /></el-icon></RouterLink>
+      </nav>
+      <nav class="topic-index" aria-label="文章分类">
+        <span><Hash :size="13" />主题</span>
+        <button :class="{ active: !categoryId }" :aria-pressed="!categoryId" @click="selectCategory('')">全部</button>
+        <button v-for="category in visibleCategories" :key="category.id" :class="{ active: categoryId === String(category.id) }" :aria-pressed="categoryId === String(category.id)" @click="selectCategory(String(category.id))">{{ category.name }}</button>
+      </nav>
       <div class="toolbar">
         <el-input
           v-model="keyword"
@@ -30,23 +25,19 @@
           placeholder="搜索标题、正文或分类"
           clearable
         />
-        <el-select v-model="categoryId" class="toolbar-select" placeholder="全部分类">
-          <el-option label="全部分类" value="" />
-          <el-option
-            v-for="category in categories"
-            :key="category.id"
-            :label="category.name"
-            :value="String(category.id)"
-          />
+        <el-select v-model="tagSlug" class="toolbar-select" placeholder="全部标签" clearable filterable aria-label="标签筛选">
+          <el-option v-for="tag in tags" :key="tag.id" :label="tag.name" :value="tag.slug"><TechBadge :tag="tag" /></el-option>
+          <template #label="{ label, value }"><TechBadge :tag="tags.find(tag => tag.slug === value) || { name: label, slug: value }" /></template>
         </el-select>
+        <el-input v-model="contentType" class="toolbar-select" clearable placeholder="内容类型" aria-label="内容类型筛选" />
         <el-select v-model="sortMode" class="toolbar-select" placeholder="排序方式">
           <el-option label="最近更新" value="updated-desc" />
-          <el-option label="最早更新" value="updated-asc" />
-          <el-option label="标题 A-Z" value="title-asc" />
+          <el-option label="本页：最早更新" value="updated-asc" />
+          <el-option label="本页：标题 A-Z" value="title-asc" />
         </el-select>
       </div>
 
-      <div class="insight-panel">
+      <div class="content-filter-status">
         <div class="filter-summary">
           <span class="summary-icon">
             <el-icon><DataAnalysis /></el-icon>
@@ -55,25 +46,6 @@
             <strong>{{ activeFilterTitle }}</strong>
             <span>{{ activeFilterMeta }}</span>
           </div>
-        </div>
-        <div class="category-rail">
-          <button class="category-filter" :class="{ active: !categoryId }" type="button" @click="selectCategory('')">
-            <span class="category-filter-dot all-dot">全</span>
-            <span>全部</span>
-          </button>
-          <button
-            v-for="category in categories"
-            :key="category.id"
-            class="category-filter"
-            :class="{ active: categoryId === String(category.id) }"
-            type="button"
-            @click="selectCategory(String(category.id))"
-          >
-            <span class="category-filter-icon" :style="articleTone(category)" aria-hidden="true">
-              <el-icon><CollectionTag /></el-icon>
-            </span>
-            <span>{{ category.name }}</span>
-          </button>
         </div>
         <el-button
           class="clear-filter-button"
@@ -99,7 +71,8 @@
     </div>
 
     <el-empty v-else-if="sortedArticles.length === 0" class="panel empty-panel" description="还没有匹配的文章">
-      <el-button type="primary" @click="$router.push('/articles/new')">发布第一篇</el-button>
+      <el-button v-if="hasFilters" :icon="Close" @click="resetFilters">清空筛选</el-button>
+      <el-button v-else-if="signedIn" type="primary" :icon="EditPen" @click="$router.push('/articles/new')">发布第一篇</el-button>
     </el-empty>
 
     <div v-else class="article-grid">
@@ -107,14 +80,10 @@
         v-for="(article, index) in sortedArticles"
         :key="article.id"
         class="article-card"
-        :style="articleTone(article)"
+        :style="{ '--item-index': index }"
       >
         <div
           class="article-card-main"
-          role="link"
-          tabindex="0"
-          @click="$router.push(`/articles/${article.id}`)"
-          @keyup.enter="$router.push(`/articles/${article.id}`)"
         >
           <div class="article-card-topline">
             <div class="card-meta">
@@ -128,10 +97,13 @@
                 {{ articleTimeLabel(article) }} {{ formatDate(articleTime(article)) }}
               </span>
             </div>
-            <span class="article-sequence">{{ formatSequence(index) }}</span>
           </div>
-          <h3>{{ article.title }}</h3>
-          <p>{{ excerpt(article.content) }}</p>
+          <h3><RouterLink :to="`/articles/${article.id}`">{{ article.title }}</RouterLink></h3>
+          <p>{{ article.summary || excerpt(article.content, article.title) }}</p>
+          <div v-if="article.tags?.length || article.sectionName" class="article-taxonomy">
+            <span v-if="article.sectionName">{{ article.sectionName }}</span>
+            <TechBadge v-for="tag in article.tags" :key="tag.id" :tag="tag" interactive :selected="tagSlug === tag.slug" @click="tagSlug = tag.slug" />
+          </div>
           <div class="article-card-stats">
             <span class="info-chip">
               <el-icon><Stopwatch /></el-icon>
@@ -178,20 +150,37 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowRight, Calendar, Close, CollectionTag, DataAnalysis, Delete, EditPen, MoreFilled, Refresh, Search, Stopwatch } from '@element-plus/icons-vue'
-import { deleteArticle, listArticles, listCategories } from '../api/blog'
+import { ArrowRight, Calendar, Close, DataAnalysis, Delete, EditPen, MoreFilled, Refresh, Search, Stopwatch } from '@element-plus/icons-vue'
+import { Hash, Layers, Library } from '@lucide/vue'
+import FluidTabs from '../components/FluidTabs.vue'
+import TechBadge from '../components/TechBadge.vue'
+import { signedIn } from '../state/session'
+import { deleteArticle, listArticles, listCategories, listSections, listTags } from '../api/blog'
 import { canManageResource } from '../utils/permissions'
 import { markdownToPlainText } from '../utils/markdown'
 
 const articles = ref([])
 const router = useRouter()
+const route = useRoute()
 const categories = ref([])
+const sections = ref([])
+const sectionOptions = computed(() => [{ label: '全部手记', value: '' }, ...sections.value.map(s => ({ label: s.name, value: s.slug }))])
+const tags = ref([])
+const activeSection = computed(() => sections.value.find(s => s.slug === sectionSlug.value))
+const sectionSlug = ref(String(route.query.sectionSlug || ''))
+const tagSlug = ref(String(route.query.tagSlug || ''))
+const contentType = ref('')
+const visibleCategories = computed(() => categories.value.filter(c => !sectionSlug.value || !c.sectionId || c.sectionSlug === sectionSlug.value))
+function selectSection(slug) {
+  sectionSlug.value = slug; categoryId.value = ''
+  router.replace({ query: { ...route.query, sectionSlug: slug || undefined } })
+}
 const loading = ref(true)
 const error = ref('')
-const keyword = ref('')
+const keyword = ref(String(route.query.keyword || ''))
 const categoryId = ref('')
 const sortMode = ref('updated-desc')
 const page = ref(1)
@@ -201,7 +190,6 @@ const pageState = reactive({
   totalElements: 0,
   totalPages: 1,
 })
-const tones = ['#e77968', '#82977c', '#b58aa5', '#c69a52', '#7c8da6']
 
 const sortedArticles = computed(() => {
   return [...articles.value].sort((a, b) => {
@@ -215,13 +203,10 @@ const sortedArticles = computed(() => {
   })
 })
 
-const totalWords = computed(() => {
-  return articles.value.reduce((sum, article) => sum + contentLength(article.content), 0)
-})
 const activeCategory = computed(() => {
   return categories.value.find((category) => String(category.id) === categoryId.value) || null
 })
-const hasFilters = computed(() => Boolean(keyword.value.trim() || categoryId.value))
+const hasFilters = computed(() => Boolean(keyword.value.trim() || categoryId.value || sectionSlug.value || tagSlug.value || contentType.value))
 const activeFilterTitle = computed(() => {
   if (keyword.value.trim() && activeCategory.value) {
     return `${activeCategory.value.name} 中搜索“${keyword.value.trim()}”`
@@ -235,7 +220,7 @@ const activeFilterTitle = computed(() => {
     return activeCategory.value.name
   }
 
-  return '全部内容'
+  return [sections.value.find(s => s.slug === sectionSlug.value)?.name, tags.value.find(t => t.slug === tagSlug.value)?.name, contentType.value.trim()].filter(Boolean).join(' · ') || '全部内容'
 })
 const activeFilterMeta = computed(() => {
   const sortMap = {
@@ -246,8 +231,8 @@ const activeFilterMeta = computed(() => {
   return `${pageState.totalElements} 篇文章 · ${sortMap[sortMode.value] || '最近更新'}`
 })
 
-function excerpt(content) {
-  const plainText = markdownToPlainText(content)
+function excerpt(content, title) {
+  const plainText = markdownToPlainText(content, { title })
   if (!plainText) {
     return '暂无正文内容'
   }
@@ -261,11 +246,6 @@ function contentLength(content) {
 function readingMinutes(content) {
   const length = contentLength(content)
   return length ? Math.max(1, Math.ceil(length / 500)) : 0
-}
-
-function articleTone(article) {
-  const source = Number(article.categoryId || article.id || 0)
-  return { '--tone': tones[Math.abs(source) % tones.length] }
 }
 
 function articleAuthorName(article) {
@@ -290,10 +270,6 @@ function articleTime(article) {
   return wasArticleUpdated(article) ? article.updatedAt : article.createdAt || article.updatedAt
 }
 
-function formatSequence(index) {
-  return String((page.value - 1) * pageSize + index + 1).padStart(2, '0')
-}
-
 function selectCategory(id) {
   categoryId.value = id
 }
@@ -301,6 +277,10 @@ function selectCategory(id) {
 function resetFilters() {
   keyword.value = ''
   categoryId.value = ''
+  sectionSlug.value = ''
+  tagSlug.value = ''
+  contentType.value = ''
+  router.replace({ query: { ...route.query, sectionSlug: undefined, tagSlug: undefined, keyword: undefined } })
 }
 
 function handleArticleCommand(article, command) {
@@ -330,8 +310,11 @@ async function loadData() {
   error.value = ''
 
   try {
-    const [articleData, categoryData] = await Promise.all([loadArticles(), listCategories()])
+    const [categoryData, sectionData, tagData] = await Promise.all([listCategories(), listSections(), listTags()])
     categories.value = categoryData
+    sections.value = sectionData
+    tags.value = tagData
+    await loadArticles()
   } catch {
     error.value = '文章数据加载失败，请确认后端服务和数据库已启动'
   } finally {
@@ -340,9 +323,13 @@ async function loadData() {
 }
 
 async function loadArticles() {
+  const requestId = ++articleRequestId
   const params = {
     page: page.value,
     size: pageSize,
+    sectionSlug: sectionSlug.value || undefined,
+    tagSlug: tagSlug.value || undefined,
+    contentType: contentType.value.trim() || undefined,
   }
 
   const key = keyword.value.trim()
@@ -355,6 +342,7 @@ async function loadArticles() {
   }
 
   const articleData = await listArticles(params)
+  if (requestId !== articleRequestId) return articleData
   articles.value = Array.isArray(articleData) ? articleData : articleData.content || []
   pageState.totalElements = Array.isArray(articleData) ? articles.value.length : articleData.totalElements || 0
   pageState.totalPages = Array.isArray(articleData) ? 1 : articleData.totalPages || 1
@@ -363,15 +351,16 @@ async function loadArticles() {
 }
 
 async function reloadArticles() {
+  const request = ++reloadRequestId
   loading.value = true
   error.value = ''
 
   try {
     await loadArticles()
   } catch {
-    error.value = '文章数据加载失败，请确认后端服务和数据库已启动'
+    if (request === reloadRequestId) error.value = '文章数据加载失败，请确认后端服务和数据库已启动'
   } finally {
-    loading.value = false
+    if (request === reloadRequestId) loading.value = false
   }
 }
 
@@ -406,17 +395,26 @@ async function removeArticle(article) {
 }
 
 let searchTimer = null
-watch([keyword, categoryId], () => {
+let articleRequestId = 0
+let reloadRequestId = 0
+watch([keyword, categoryId, sectionSlug, tagSlug, contentType], () => {
+  articleRequestId++
+  reloadRequestId++
   window.clearTimeout(searchTimer)
   searchTimer = window.setTimeout(() => {
-    page.value = 1
-    reloadArticles()
+    if (page.value !== 1) page.value = 1
+    else reloadArticles()
   }, 260)
 })
 
 watch(page, () => {
+  window.clearTimeout(searchTimer)
   reloadArticles()
 })
 
 onMounted(loadData)
+watch(() => route.query.sectionSlug, value => { sectionSlug.value = String(value || ''); categoryId.value = '' })
+watch(() => route.query.tagSlug, value => { tagSlug.value = String(value || '') })
+watch(() => route.query.keyword, value => { keyword.value = String(value || '') })
+onBeforeUnmount(() => { window.clearTimeout(searchTimer); articleRequestId++ })
 </script>

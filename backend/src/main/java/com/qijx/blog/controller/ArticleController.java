@@ -20,7 +20,9 @@ import com.qijx.blog.dto.InteractionStatusResponse;
 import com.qijx.blog.entity.Article;
 import com.qijx.blog.entity.ArticleDraft;
 import com.qijx.blog.entity.ArticleRevision;
+import com.qijx.blog.entity.Series;
 import com.qijx.blog.service.ArticleService;
+import com.qijx.blog.service.SeriesService;
 
 import jakarta.validation.Valid;
 
@@ -30,9 +32,11 @@ import jakarta.validation.Valid;
 public class ArticleController {
     
     private final ArticleService articleService;
+    private final SeriesService seriesService;
 
-    public ArticleController(ArticleService articleService){
+    public ArticleController(ArticleService articleService, SeriesService seriesService){
         this.articleService = articleService;
+        this.seriesService = seriesService;
     }
 
     @PostMapping
@@ -48,14 +52,23 @@ public class ArticleController {
         @RequestParam(defaultValue = "1") int page,
         @RequestParam(defaultValue = "10") int size,
         @RequestParam(required = false) String keyword,
-        @RequestParam(required = false) Long categoryId
+        @RequestParam(required = false) Long categoryId,
+        @RequestParam(required = false) String sectionSlug,
+        @RequestParam(required = false) String contentType,
+        @RequestParam(required = false) String tagSlug,
+        @RequestParam(required = false) Long seriesId
     ){
-        return articleService.listArticles(page, size, keyword, categoryId);
+        return articleService.listArticles(page, size, keyword, categoryId, sectionSlug, contentType, tagSlug, seriesId);
     }
 
     @GetMapping("/{id}")
     public Article getArticle(@PathVariable Long id){
         return articleService.getArticle(id);
+    }
+
+    @GetMapping("/{id}/series")
+    public List<Series> listArticleSeries(@PathVariable Long id){
+        return seriesService.listSeriesForArticle(id);
     }
 
     @GetMapping("/{id}/likes")

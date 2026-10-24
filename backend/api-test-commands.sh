@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-BASE_URL="${BASE_URL:-http://localhost:8080}"
+BASE_URL="${BASE_URL:-http://localhost:8081}"
 ARTICLE_ID="${ARTICLE_ID:-1}"
 
 cat <<EOF
@@ -11,7 +11,7 @@ Blog API 手动测试命令
 - 默认接口地址：${BASE_URL}
 - 示例文章 ID：${ARTICLE_ID}
 - 如果你的端口或 ID 不一样，可以这样运行：
-  BASE_URL=http://localhost:8080 ARTICLE_ID=2 ./api-test-commands.sh
+  BASE_URL=http://localhost:8081 ARTICLE_ID=2 ./api-test-commands.sh
 
 ----------------------------------------
 功能：健康检查

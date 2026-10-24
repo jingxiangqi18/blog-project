@@ -1,5 +1,5 @@
 import MarkdownIt from 'markdown-it'
-import hljs from 'highlight.js'
+import hljs from 'highlight.js/lib/common'
 
 const markdown = new MarkdownIt({
   html: false,
@@ -110,16 +110,43 @@ markdown.renderer.rules.link_open = (tokens, index, options, env, self) => {
   return defaultLinkOpenRenderer(tokens, index, options, env, self)
 }
 
-export function renderMarkdown(content) {
-  return markdown.render(content || '')
+export function renderMarkdownDocument(content, { title: pageTitle } = {}) {
+  const env = {}
+  const tokens = markdown.parse(content || '', env)
+  const used = new Set()
+  const headings = []
+  tokens.forEach((token, index) => {
+    if (token.type !== 'heading_open') return
+    const inline = tokens[index + 1]
+    const title = (inline.children || []).map(child => child.type === 'image' ? child.content : child.type === 'text' || child.type === 'code_inline' ? child.content : '').join('') || inline.content
+    if (index === 0 && token.tag === 'h1' && pageTitle?.trim() === title.trim()) token.attrJoin('class', 'markdown-title-echo')
+    const base = title.trim().toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, '').replace(/\s+/g, '-') || 'heading'
+    let id = base, suffix = 2
+    while (used.has(id)) id = `${base}-${suffix++}`
+    used.add(id)
+    token.attrSet('id', id)
+    headings.push({ id, title, level: Number(token.tag.slice(1)), line: token.map?.[0] || 0 })
+  })
+  return { html: markdown.renderer.render(tokens, markdown.options, env), headings }
 }
 
-export function markdownToPlainText(content) {
+const defaultFence = markdown.renderer.rules.fence
+markdown.renderer.rules.fence = (tokens, index, options, env, self) => {
+  const language = markdown.utils.escapeHtml(tokens[index].info.trim().split(/\s+/)[0] || 'text')
+  return `<div class="code-block" data-source-line="${tokens[index].map?.[0] || 0}"><div class="code-toolbar"><span>${language}</span><button type="button" data-copy-code aria-label="复制代码">复制</button></div>${defaultFence(tokens, index, options, env, self)}</div>`
+}
+
+export function renderMarkdown(content) {
+  return renderMarkdownDocument(content).html
+}
+
+export function markdownToPlainText(content, options) {
   if (!content) {
     return ''
   }
 
   const container = document.createElement('div')
-  container.innerHTML = renderMarkdown(content)
+  container.innerHTML = renderMarkdownDocument(content, options).html
+  container.querySelectorAll('.code-toolbar, .markdown-title-echo').forEach(element => element.remove())
   return (container.textContent || '').replace(/\s+/g, ' ').trim()
 }

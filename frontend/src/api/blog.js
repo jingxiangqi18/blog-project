@@ -140,9 +140,34 @@ export function deleteKnowledgeCard(id) {
   return http.delete(`/knowledge-cards/${id}`)
 }
 
-export function listCategories() {
-  return http.get('/categories')
+export function listCategories(params = {}) {
+  return http.get('/categories', { params })
 }
+
+export const listSections = () => http.get('/sections')
+export const listAllSections = () => http.get('/sections/admin/all')
+export const createSection = (data) => http.post('/sections', data)
+export const updateSection = (id, data) => http.put(`/sections/${id}`, data)
+export const updateSectionEnabled = (id, enabled) => http.patch(`/sections/${id}/enabled`, { enabled })
+export const listTags = (params = {}) => http.get('/tags', { params })
+export const createTag = (data) => http.post('/tags', data)
+export const updateTag = (id, data) => http.put(`/tags/${id}`, data)
+export const deleteTag = (id) => http.delete(`/tags/${id}`)
+export const listSeries = (params = {}) => http.get('/series', { params })
+export const getSeries = (id) => http.get(`/series/${id}`)
+export const createSeries = (data) => http.post('/series', data)
+export const updateSeries = (id, data) => http.put(`/series/${id}`, data)
+export const deleteSeries = (id) => http.delete(`/series/${id}`)
+export const addSeriesArticle = (id, articleId) => http.post(`/series/${id}/articles/${articleId}`)
+export const removeSeriesArticle = (id, articleId) => http.delete(`/series/${id}/articles/${articleId}`)
+export const reorderSeriesArticles = (id, articleIds) => http.put(`/series/${id}/articles/order`, { articleIds })
+export const getSeriesDirectory = (id) => http.get(`/series/${id}/directory`)
+export const listArticleSeries = (id) => http.get(`/articles/${id}/series`)
+export const createSeriesChapter = (id, data) => http.post(`/series/${id}/chapters`, data)
+export const updateSeriesChapter = (id, chapterId, data) => http.put(`/series/${id}/chapters/${chapterId}`, data)
+export const deleteSeriesChapter = (id, chapterId) => http.delete(`/series/${id}/chapters/${chapterId}`)
+export const reorderSeriesChapters = (id, data) => http.put(`/series/${id}/chapters/order`, data)
+export const assignSeriesArticleChapter = (id, articleId, chapterId) => http.put(`/series/${id}/articles/${articleId}/chapter`, { chapterId })
 
 export function createCategory(payload) {
   return http.post('/categories', payload)

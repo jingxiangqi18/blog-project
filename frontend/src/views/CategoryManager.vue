@@ -14,6 +14,9 @@
     <div class="panel category-panel">
       <el-form v-if="canManageCategories" class="category-form" :model="form" @submit.prevent>
         <el-input v-model="form.name" maxlength="100" show-word-limit placeholder="新的分类名称" />
+        <el-select v-model="form.sectionId" clearable placeholder="全局分类" aria-label="分类所属分区">
+          <el-option v-for="s in sections" :key="s.id" :label="s.name" :value="s.id" />
+        </el-select>
         <el-button type="primary" :icon="Plus" :loading="saving" :disabled="!form.name.trim()" @click="submit">
           添加分类
         </el-button>
@@ -44,6 +47,7 @@
             </span>
             <div>
               <strong>{{ category.name }}</strong>
+              <small>{{ category.sectionName || '全局分类' }}</small>
             </div>
           </div>
           <div v-if="canManageCategories" class="category-actions">
@@ -95,8 +99,11 @@
       </div>
     </section>
 
-    <el-dialog v-if="canManageCategories" v-model="editing.visible" title="重命名分类" width="420px">
+    <el-dialog v-if="canManageCategories" v-model="editing.visible" title="编辑分类" width="420px">
       <el-input v-model="editing.name" maxlength="100" show-word-limit />
+      <el-select v-model="editing.sectionId" clearable placeholder="全局分类" aria-label="分类所属分区">
+        <el-option v-for="s in sections" :key="s.id" :label="s.name" :value="s.id" />
+      </el-select>
       <template #footer>
         <el-button @click="editing.visible = false">取消</el-button>
         <el-button type="primary" :loading="editing.saving" :disabled="!editing.name.trim()" @click="saveEdit">
@@ -111,7 +118,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowRight, CollectionTag, Delete, Edit, MoreFilled, Plus, Refresh } from '@element-plus/icons-vue'
-import { createCategory, deleteCategory, listArticlesByCategory, listCategories, updateCategory } from '../api/blog'
+import { createCategory, deleteCategory, listArticlesByCategory, listCategories, updateCategory, listSections, listAllSections } from '../api/blog'
 import { isAdmin } from '../utils/permissions'
 import { markdownToPlainText } from '../utils/markdown'
 
@@ -123,7 +130,8 @@ const saving = ref(false)
 const error = ref('')
 const articlesError = ref('')
 const selectedCategoryId = ref(null)
-const form = reactive({ name: '' })
+const form = reactive({ name: '', sectionId: null })
+const sections = ref([])
 const tones = ['#e77968', '#82977c', '#b58aa5', '#c69a52', '#7c8da6']
 const editing = reactive({
   visible: false,
@@ -178,7 +186,9 @@ async function loadCategories() {
   error.value = ''
 
   try {
-    categories.value = await listCategories()
+    const [categoryData, sectionData] = await Promise.all([listCategories(), isAdmin() ? listAllSections() : listSections()])
+    categories.value = categoryData
+    sections.value = sectionData
     if (!categories.value.some((category) => category.id === selectedCategoryId.value)) {
       selectedCategoryId.value = categories.value[0]?.id || null
     }
@@ -226,7 +236,7 @@ async function submit() {
 
   saving.value = true
   try {
-    const saved = await createCategory({ name })
+    const saved = await createCategory({ name, sectionId: form.sectionId || null })
     form.name = ''
     selectedCategoryId.value = saved.id
     await loadCategories()
@@ -244,6 +254,7 @@ function startEdit(category) {
   editing.visible = true
   editing.id = category.id
   editing.name = category.name
+  editing.sectionId = category.sectionId || null
 }
 
 function handleCategoryCommand(category, command) {
@@ -271,7 +282,7 @@ async function saveEdit() {
 
   editing.saving = true
   try {
-    await updateCategory(editing.id, { name })
+    await updateCategory(editing.id, { name, sectionId: editing.sectionId || null })
     editing.visible = false
     await loadCategories()
     ElMessage.success('分类已更新')

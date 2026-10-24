@@ -5,5 +5,7 @@ import 'highlight.js/styles/github.css'
 import './style.css'
 import App from './App.vue'
 import router from './router'
+import { copyCode } from './utils/clipboard'
 
+document.addEventListener('click', copyCode)
 createApp(App).use(router).use(ElementPlus).mount('#app')

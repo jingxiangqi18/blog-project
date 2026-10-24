@@ -52,23 +52,11 @@
             <div class="markdown-editor">
               <div class="markdown-toolbar">
                 <div class="markdown-tools">
-                  <el-button :icon="Memo" @click="insertMarkdown('heading')">标题</el-button>
-                  <el-button :icon="List" @click="insertMarkdown('list')">列表</el-button>
-                  <el-button :icon="ChatLineRound" @click="insertMarkdown('quote')">引用</el-button>
-                  <el-button :icon="Reading" @click="insertMarkdown('code')">代码块</el-button>
-                  <el-button :icon="Picture" @click="insertMarkdown('image')">图片</el-button>
-                  <el-button :icon="Link" @mousedown.prevent @click="openReferenceDialog('article')">
-                    链接文章
-                  </el-button>
-                  <el-button :icon="Notebook" @mousedown.prevent @click="openReferenceDialog('card')">
-                    知识卡片
-                  </el-button>
+                  <span class="editor-tool-group"><button class="editor-tool" title="标题" aria-label="插入标题" @mousedown.prevent @click.prevent="insertMarkdown('heading')"><Heading2 :size="17" /></button><button class="editor-tool" title="列表" aria-label="插入列表" @mousedown.prevent @click.prevent="insertMarkdown('list')"><ListIcon :size="17" /></button><button class="editor-tool" title="引用" aria-label="插入引用" @mousedown.prevent @click.prevent="insertMarkdown('quote')"><Quote :size="17" /></button></span>
+                  <span class="editor-tool-group"><button class="editor-tool" title="代码块" aria-label="插入代码块" @mousedown.prevent @click.prevent="insertMarkdown('code')"><Code2 :size="17" /></button><button class="editor-tool" title="图片" aria-label="插入图片" @mousedown.prevent @click.prevent="insertMarkdown('image')"><ImageIcon :size="17" /></button></span>
+                  <span class="editor-tool-group"><button class="editor-tool" title="链接文章" aria-label="链接文章" @mousedown.prevent @click.prevent="openReferenceDialog('article')"><Link2 :size="17" /></button><button class="editor-tool" title="知识卡片" aria-label="知识卡片" @mousedown.prevent @click.prevent="openReferenceDialog('card')"><Layers :size="17" /></button></span>
                 </div>
-                <el-radio-group v-model="editorMode" size="small">
-                  <el-radio-button value="edit">编辑</el-radio-button>
-                  <el-radio-button value="split">分屏</el-radio-button>
-                  <el-radio-button value="preview">预览</el-radio-button>
-                </el-radio-group>
+                <FluidTabs v-model="editorMode" :items="editorModes" appearance="compact" label="编辑视图" />
               </div>
 
               <div
@@ -105,6 +93,7 @@
                   <el-empty v-else description="预览会显示在这里" />
                 </div>
               </div>
+              <footer class="editor-statusbar"><span><Code2 :size="12" /> Markdown</span><span>{{ contentLength }} 字符</span><span>{{ editorModes.find(mode => mode.value === editorMode)?.label }}</span></footer>
             </div>
           </el-form-item>
         </div>
@@ -130,16 +119,39 @@
             </el-button>
           </div>
 
+          <el-form-item label="分区">
+            <el-select v-model="metadata.sectionId" clearable placeholder="未分区" class="full-width" @change="onSectionChange">
+              <el-option v-for="section in sectionOptions" :key="section.id" :label="section.name" :value="section.id" :disabled="section.enabled === false" />
+            </el-select>
+          </el-form-item>
           <el-form-item label="分类" prop="categoryId">
             <el-select v-model="form.categoryId" placeholder="选择分类" class="full-width">
               <el-option
-                v-for="category in categories"
+                v-for="category in compatibleCategories"
                 :key="category.id"
                 :label="category.name"
                 :value="category.id"
               />
             </el-select>
           </el-form-item>
+
+          <el-form-item label="标签">
+            <el-select v-model="metadata.tagIds" multiple filterable :multiple-limit="50" placeholder="选择标签" class="full-width">
+              <el-option v-for="tag in tags" :key="tag.id" :label="tag.name" :value="tag.id"><TechBadge :tag="tag" /></el-option>
+            </el-select>
+          </el-form-item>
+          <el-form-item label="所属系列">
+            <el-select v-model="publishSeriesIds" multiple filterable remote :remote-method="searchPublishSeries" :loading="publishSeriesLoading" placeholder="搜索系列" class="full-width">
+              <el-option v-for="series in publishSeriesOptions" :key="series.id" :label="series.title" :value="series.id" :disabled="!canManageResource(series) || (!!metadata.sectionId && series.sectionId !== metadata.sectionId)" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="内容类型">
+            <el-input v-model="metadata.contentType" maxlength="50" placeholder="general" />
+          </el-form-item>
+          <el-form-item label="文章摘要">
+            <el-input v-model="metadata.summary" type="textarea" :rows="3" maxlength="500" show-word-limit />
+          </el-form-item>
+          <p v-if="metadataDirty" class="metadata-pending" role="status">组织信息待保存，发布或保存修改后生效。</p>
 
           <section class="draft-control-card" :class="draftStatus">
             <div class="draft-control-copy">
@@ -355,7 +367,10 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { Code2, Columns2, Eye, Heading2, Image as ImageIcon, Layers, Link2, List as ListIcon, Pencil, Quote } from '@lucide/vue'
+import FluidTabs from '../components/FluidTabs.vue'
+import TechBadge from '../components/TechBadge.vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -367,10 +382,7 @@ import {
   Delete,
   DocumentCopy,
   Link,
-  List,
-  Memo,
   Notebook,
-  Picture,
   Reading,
   Refresh,
   RefreshLeft,
@@ -390,6 +402,12 @@ import {
   listArticleRevisions,
   listArticles,
   listCategories,
+  listSections,
+  listTags,
+  listSeries,
+  listArticleSeries,
+  addSeriesArticle,
+  removeSeriesArticle,
   listKnowledgeCards,
   restoreArticleRevision,
   saveArticleDraft,
@@ -415,7 +433,45 @@ const saving = ref(false)
 const loadError = ref('')
 const categoriesLoaded = ref(false)
 const categories = ref([])
+const sections = ref([])
+const tags = ref([])
+const publishSeriesIds = ref([])
+const originalSeries = ref([])
+const publishSeriesOptions = ref([])
+const publishSeriesLoading = ref(false)
+const seriesDirty = computed(() => [...publishSeriesIds.value].sort().join(',') !== originalSeries.value.map(s => s.id).sort().join(','))
+let publishSeriesRequest = 0
+async function searchPublishSeries(keyword = '') {
+  const request = ++publishSeriesRequest
+  publishSeriesLoading.value = true
+  try {
+    const result = await listSeries({ keyword, page: 1, size: 50 })
+    if (request !== publishSeriesRequest) return
+    const options = new Map([...originalSeries.value, ...publishSeriesOptions.value.filter(s => publishSeriesIds.value.includes(s.id)), ...result.content].map(s => [s.id, s]))
+    publishSeriesOptions.value = [...options.values()]
+  } catch { ElMessage.warning('系列列表加载失败，请重试') }
+  finally { if(request === publishSeriesRequest) publishSeriesLoading.value = false }
+}
+const metadata = reactive({ sectionId: null, summary: '', contentType: 'general', tagIds: [] })
+const savedMetadata = ref(JSON.stringify(metadata))
+const metadataDirty = computed(() => JSON.stringify(metadata) !== savedMetadata.value || seriesDirty.value)
+const compatibleCategories = computed(() => categories.value.filter(c => !metadata.sectionId || !c.sectionId || c.sectionId === metadata.sectionId))
+const sectionOptions = computed(() => {
+  const options = [...sections.value]
+  if (sourceArticle.value?.sectionId && !options.some(s => s.id === sourceArticle.value.sectionId)) {
+    options.push({ id: sourceArticle.value.sectionId, name: `${sourceArticle.value.sectionName || '原分区'}（已禁用）`, enabled: false })
+  }
+  return options
+})
+function onSectionChange() {
+  if (!compatibleCategories.value.some(c => c.id === form.categoryId)) form.categoryId = ''
+}
+function applyMetadata(article) {
+  Object.assign(metadata, { sectionId: article.sectionId || null, summary: article.summary || '', contentType: article.contentType || 'general', tagIds: article.tagIds || article.tags?.map(t => t.id) || [] })
+  savedMetadata.value = JSON.stringify(metadata)
+}
 const editorMode = ref('split')
+const editorModes = [{ label: '编辑', value: 'edit', icon: markRaw(Pencil) }, { label: '分屏', value: 'split', icon: markRaw(Columns2) }, { label: '预览', value: 'preview', icon: markRaw(Eye) }]
 const contentEditorRef = ref(null)
 const previewPaneRef = ref(null)
 const markdownWorkspaceRef = ref(null)
@@ -820,7 +876,7 @@ async function discardDraft(){
 }
 
 function handleBeforeUnload(event){
-  if(!hasUnsavedChanges.value){
+  if(!hasUnsavedChanges.value && !metadataDirty.value){
     return
   }
 
@@ -829,11 +885,11 @@ function handleBeforeUnload(event){
 }
 
 onBeforeRouteLeave(() => {
-  if(!hasUnsavedChanges.value){
+  if(!hasUnsavedChanges.value && !metadataDirty.value){
     return true
   }
 
-  return window.confirm('当前修改尚未自动保存，确定离开编辑页面吗？')
+  return window.confirm(metadataDirty.value ? '分区、标签等组织信息尚未正式保存，确定离开吗？' : '当前修改尚未自动保存，确定离开编辑页面吗？')
 })
 
 async function openReferenceDialog(type){
@@ -1158,12 +1214,16 @@ async function loadData() {
 
   try {
     await waitForSessionCheck()
-    categories.value = await listCategories()
+    const [categoryData, sectionData, tagData] = await Promise.all([listCategories(), listSections(), listTags()])
+    categories.value = categoryData
+    sections.value = sectionData
+    tags.value = tagData
     categoriesLoaded.value = true
 
     if (isEdit.value) {
       const article = await getArticle(props.id)
       sourceArticle.value = article
+      applyMetadata(article)
 
       if (!canManageResource(article)) {
         loadError.value = '当前账号没有编辑这篇文章的权限'
@@ -1173,6 +1233,8 @@ async function loadData() {
       form.title = article.title
       form.categoryId = article.categoryId
       form.content = article.content
+      originalSeries.value = await listArticleSeries(props.id)
+      publishSeriesIds.value = originalSeries.value.map(s => s.id)
       await nextTick()
       syncPreviewByScroll()
     } else if (categories.value[0]) {
@@ -1180,6 +1242,7 @@ async function loadData() {
     }
 
     await loadSavedDraft()
+    await searchPublishSeries()
   } catch {
     loadError.value = isEdit.value ? '文章或分类加载失败' : '分类加载失败，请确认后端服务已启动'
   } finally {
@@ -1279,12 +1342,26 @@ async function submit() {
 
   await formRef.value.validate()
 
+  if (!compatibleCategories.value.some(c => c.id === Number(form.categoryId))) {
+    ElMessage.warning('请选择与当前分区匹配的分类')
+    return
+  }
+
+  if (!/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(metadata.contentType.trim())) {
+    ElMessage.warning('内容类型使用小写英文、数字或下划线，例如 reading_notes')
+    return
+  }
+
   saving.value = true
   try {
     const payload = {
       title: form.title.trim(),
       categoryId: Number(form.categoryId),
       content: form.content.trim(),
+      sectionId: metadata.sectionId || null,
+      summary: metadata.summary.trim() || null,
+      contentType: metadata.contentType.trim(),
+      tagIds: metadata.tagIds,
     }
 
     const saved = isEdit.value
@@ -1292,6 +1369,15 @@ async function submit() {
       : await createArticle(payload)
 
     sourceArticle.value = saved
+    applyMetadata(saved)
+    const additions = publishSeriesIds.value.filter(id => !originalSeries.value.some(s => s.id === id))
+    const removals = originalSeries.value.filter(s => !publishSeriesIds.value.includes(s.id) && canManageResource(s))
+    const seriesWrites = await Promise.allSettled([
+      ...additions.map(id => addSeriesArticle(id, saved.id)),
+      ...removals.map(s => removeSeriesArticle(s.id, saved.id)),
+    ])
+    if (seriesWrites.some(result => result.status === 'rejected')) ElMessage.warning('文章已保存，部分系列关联未成功，请在目录中重试')
+    originalSeries.value = publishSeriesOptions.value.filter(s => publishSeriesIds.value.includes(s.id))
     form.title = saved.title
     form.content = saved.content
     form.categoryId = saved.categoryId
@@ -1313,6 +1399,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  publishSeriesRequest++
   window.removeEventListener('beforeunload', handleBeforeUnload)
   window.clearInterval(autoSaveTimer)
   window.clearTimeout(autoSaveDebounceTimer)
