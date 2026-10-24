@@ -28,19 +28,7 @@
     </div>
 
     <template v-else>
-      <nav class="profile-tabs" aria-label="个人中心导航">
-        <button
-          v-for="tab in tabs"
-          :key="tab.value"
-          type="button"
-          :class="{ active: activeTab === tab.value }"
-          @click="activeTab = tab.value"
-        >
-          <el-icon><component :is="tab.icon" /></el-icon>
-          <span>{{ tab.label }}</span>
-          <strong v-if="tab.count !== null">{{ tab.count }}</strong>
-        </button>
-      </nav>
+      <nav class="profile-tabs" aria-label="个人中心导航"><FluidTabs v-model="activeTab" :items="tabs" label="个人中心导航" /></nav>
 
       <div v-if="loading" class="panel profile-loading">
         <el-skeleton :rows="7" animated />
@@ -180,6 +168,7 @@ import {
 } from '../api/blog'
 import { sessionState, signedIn } from '../state/session'
 import { markdownToPlainText } from '../utils/markdown'
+import FluidTabs from '../components/FluidTabs.vue'
 
 const isSignedIn = signedIn
 const activeTab = ref('articles')

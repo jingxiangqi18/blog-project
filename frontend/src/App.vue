@@ -1,72 +1,7 @@
 <template>
   <el-config-provider namespace="el">
-    <div class="app-shell">
-      <aside class="app-sidebar">
-        <RouterLink class="brand" to="/articles">
-          <span class="brand-mark">
-            <el-icon><Camera /></el-icon>
-          </span>
-          <span class="brand-copy">
-            <strong>留白手记</strong>
-            <small>Notes / Code / Life</small>
-          </span>
-        </RouterLink>
-
-        <nav class="nav-list" aria-label="主导航">
-          <RouterLink to="/articles" class="nav-item">
-            <el-icon><Document /></el-icon>
-            <span>文章</span>
-          </RouterLink>
-          <RouterLink to="/categories" class="nav-item">
-            <el-icon><CollectionTag /></el-icon>
-            <span>分类</span>
-          </RouterLink>
-          <RouterLink to="/knowledge" class="nav-item">
-            <el-icon><Notebook /></el-icon>
-            <span>知识库</span>
-          </RouterLink>
-          <RouterLink v-if="isSignedIn" to="/me" class="nav-item">
-            <el-icon><User /></el-icon>
-            <span>我的</span>
-          </RouterLink>
-          <RouterLink v-if="isAdminUser" to="/users" class="nav-item">
-            <el-icon><User /></el-icon>
-            <span>用户</span>
-          </RouterLink>
-        </nav>
-
-        <RouterLink v-if="isSignedIn" class="sidebar-user-card" to="/me">
-          <span class="user-avatar large">{{ userInitial }}</span>
-          <span>
-            <strong>{{ sessionState.user?.username }}</strong>
-            <small>{{ roleLabel }}</small>
-          </span>
-        </RouterLink>
-
-        <div class="sidebar-decoration" aria-hidden="true">
-          <span></span>
-          <span></span>
-          <span></span>
-        </div>
-
-        <div class="sidebar-footer">
-          <span class="status-dot" :class="{ online: isSignedIn }" aria-hidden="true"></span>
-          <span>{{ isSignedIn ? '灵感在线' : 'Quiet Mode' }}</span>
-        </div>
-      </aside>
-
-      <div class="workspace">
-        <header class="app-header">
-          <div class="topbar-context">
-            <span class="topbar-decoration" aria-hidden="true">
-              <i></i><i></i><i></i>
-            </span>
-            <div class="topbar-copy">
-              <span>{{ currentView.kicker }}</span>
-              <strong>{{ currentView.title }}</strong>
-            </div>
-          </div>
-
+    <SiteShell>
+      <template #actions>
           <div class="topbar-actions">
             <span v-if="sessionState.checking" class="auth-checking">校验登录中</span>
             <template v-else-if="isSignedIn">
@@ -81,7 +16,7 @@
                 写文章
               </el-button>
               <el-dropdown trigger="click" placement="bottom-end" @command="handleUserCommand">
-                <button class="user-pill" type="button">
+                <button class="user-pill" type="button" :aria-label="`${sessionState.user?.username}，账户菜单`" :title="sessionState.user?.username">
                   <span class="user-avatar">{{ userInitial }}</span>
                   <span>
                     <strong>{{ sessionState.user?.username }}</strong>
@@ -95,6 +30,9 @@
                       <span class="dropdown-identity">{{ sessionState.user?.username }} · {{ roleLabel }}</span>
                     </el-dropdown-item>
                     <el-dropdown-item command="profile" :icon="User">个人中心</el-dropdown-item>
+                    <el-dropdown-item command="collections">管理系列</el-dropdown-item>
+                    <el-dropdown-item v-if="sessionState.user?.role === 'ADMIN'" command="categories">管理分类</el-dropdown-item>
+                    <el-dropdown-item v-if="sessionState.user?.role === 'ADMIN'" command="users">管理用户</el-dropdown-item>
                     <el-dropdown-item divided command="logout" :icon="SwitchButton">退出登录</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
@@ -102,17 +40,13 @@
             </template>
             <el-button v-else :icon="Lock" @click="loginVisible = true">登录</el-button>
           </div>
-        </header>
-
-        <main class="app-main">
-          <RouterView v-slot="{ Component, route }">
-            <Transition name="page-shift" mode="out-in">
-              <component :is="Component" :key="route.path" />
-            </Transition>
-          </RouterView>
-        </main>
-      </div>
-
+      </template>
+      <RouterView v-slot="{ Component, route }">
+        <Transition name="page-shift" mode="out-in">
+          <component :is="Component" :key="route.path" />
+        </Transition>
+      </RouterView>
+    </SiteShell>
       <el-dialog v-model="loginVisible" :title="authDialogTitle" width="420px" class="login-dialog">
         <el-segmented v-model="authMode" class="auth-mode-switch" :options="authModeOptions" />
         <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" label-position="top" @submit.prevent>
@@ -138,20 +72,19 @@
           </el-button>
         </template>
       </el-dialog>
-    </div>
   </el-config-provider>
 </template>
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowDown, Camera, CollectionTag, Document, EditPen, Lock, Notebook, SwitchButton, User } from '@element-plus/icons-vue'
+import { ArrowDown, EditPen, Lock, SwitchButton, User } from '@element-plus/icons-vue'
+import SiteShell from './components/SiteShell.vue'
 import { getCurrentUser, login, register } from './api/blog'
 import { clearSession, finishSessionCheck, sessionState, setSession, signedIn } from './state/session'
 
 const loginVisible = ref(false)
-const route = useRoute()
 const router = useRouter()
 const loggingIn = ref(false)
 const authMode = ref('login')
@@ -178,20 +111,6 @@ const loginRules = {
 
 const isSignedIn = signedIn
 const authDialogTitle = computed(() => (authMode.value === 'login' ? '登录留白手记' : '注册留白手记'))
-const isAdminUser = computed(() => sessionState.user?.role === 'ADMIN' && !sessionState.checking)
-const currentView = computed(() => {
-  const views = {
-    articles: { kicker: 'Today', title: '文章与灵感' },
-    categories: { kicker: 'Collections', title: '主题收藏' },
-    knowledge: { kicker: 'Knowledge', title: '知识卡片' },
-    profile: { kicker: 'Personal Space', title: '我的留白' },
-    users: { kicker: 'People', title: '成员与权限' },
-    'article-detail': { kicker: 'Reading', title: '沉浸阅读' },
-    'article-create': { kicker: 'Compose', title: '写下新篇' },
-    'article-edit': { kicker: 'Revise', title: '继续创作' },
-  }
-  return views[route.name] || views.articles
-})
 const userInitial = computed(() => {
   return (sessionState.user?.username || 'U').trim().slice(0, 1).toUpperCase()
 })
@@ -242,6 +161,10 @@ function logout() {
 }
 
 function handleUserCommand(command) {
+  if (['collections', 'categories', 'users'].includes(command)) {
+    router.push(`/${command}`)
+    return
+  }
   if (command === 'profile') {
     router.push('/me')
     return

@@ -1,0 +1,2 @@
+<template><section class="about-page"><p class="section-kicker">About</p><h1>留白，给思考一点空间。</h1><p>这里存放技术学习中的笔记，也保留生活里不成体系的片段。</p><p>把问题写下来，把理解慢慢补全。记录不必完美，但可以不断生长。</p><nav><RouterLink to="/articles">阅读手记 <ArrowRight :size="16" /></RouterLink><RouterLink to="/collections">系列目录 <BookOpen :size="16" /></RouterLink></nav></section></template>
+<script setup>import { ArrowRight, BookOpen } from '@lucide/vue'</script>

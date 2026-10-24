@@ -3,6 +3,7 @@ package com.qijx.blog.service;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Objects;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,11 +17,14 @@ import com.qijx.blog.entity.ArticleDraft;
 import com.qijx.blog.entity.ArticleRevision;
 import com.qijx.blog.entity.Role;
 import com.qijx.blog.entity.User;
+import com.qijx.blog.entity.Category;
 import com.qijx.blog.repository.ArticleRepository;
 import com.qijx.blog.repository.ArticleInteractionRepository;
 import com.qijx.blog.repository.ArticleDraftRepository;
 import com.qijx.blog.repository.ArticleRevisionRepository;
 import com.qijx.blog.repository.CommentRepository;
+import com.qijx.blog.repository.TagRepository;
+import com.qijx.blog.repository.SeriesRepository;
 
 @Service
 public class ArticleService {
@@ -32,6 +36,10 @@ public class ArticleService {
     private final CommentRepository commentRepository;
     private final CategoryService categoryService;
     private final CurrentUserService currentUserService;
+    private final SectionService sectionService;
+    private final TagService tagService;
+    private final TagRepository tagRepository;
+    private final SeriesRepository seriesRepository;
 
     public ArticleService(
         ArticleRepository articleRepository,
@@ -40,7 +48,11 @@ public class ArticleService {
         ArticleRevisionRepository articleRevisionRepository,
         CommentRepository commentRepository,
         CategoryService categoryService,
-        CurrentUserService currentUserService
+        CurrentUserService currentUserService,
+        SectionService sectionService,
+        TagService tagService,
+        TagRepository tagRepository,
+        SeriesRepository seriesRepository
     ){
         this.articleRepository = articleRepository;
         this.articleInteractionRepository = articleInteractionRepository;
@@ -49,13 +61,18 @@ public class ArticleService {
         this.commentRepository = commentRepository;
         this.categoryService = categoryService;
         this.currentUserService = currentUserService;
+        this.sectionService = sectionService;
+        this.tagService = tagService;
+        this.tagRepository = tagRepository;
+        this.seriesRepository = seriesRepository;
     }
 
     @Transactional
     public Article createArticle(Article article, String authorizationHeader){
         User currentUser = currentUserService.getCurrentEnabledUser(authorizationHeader);
 
-        categoryService.getCategory(article.getCategoryId());
+        validateOrganization(article, null);
+        List<Long> tagIds = article.isTagIdsProvided() ? tagService.validateTagIds(article.getTagIds()) : List.of();
 
         article.setAuthorId(currentUser.getId());
 
@@ -64,12 +81,18 @@ public class ArticleService {
         article.setUpdatedAt(now);
 
         Article savedArticle = articleRepository.save(article);
+        tagRepository.updateArticleTags(savedArticle.getId(), tagIds);
         articleRevisionRepository.saveSnapshot(savedArticle, currentUser.getId(), now);
 
-        return savedArticle;
+        return getArticle(savedArticle.getId());
     }
 
     public PageResponse<Article> listArticles(int page, int size, String keyword, Long categoryId)  {
+        return listArticles(page, size, keyword, categoryId, null, null, null, null);
+    }
+
+    public PageResponse<Article> listArticles(int page, int size, String keyword, Long categoryId,
+        String sectionSlug, String contentType, String tagSlug, Long seriesId){
         if(page < 1){
             page = 1;
         }
@@ -90,7 +113,8 @@ public class ArticleService {
             normalizedKeyword = keyword.trim();
         }
 
-        return articleRepository.findPage(page, size, normalizedKeyword, categoryId);
+        return articleRepository.findPage(page, size, normalizedKeyword, categoryId,
+            normalizeFilter(sectionSlug), normalizeFilter(contentType), normalizeFilter(tagSlug), seriesId);
     }
 
     public Article getArticle(Long id){
@@ -152,14 +176,32 @@ public class ArticleService {
     @Transactional
     public Article updateArticle(Long id, Article article, String authorizationHeader){
         User currentUser = currentUserService.getCurrentEnabledUser(authorizationHeader);
-        Article existingArticle = getArticle(id);
+        Article existingArticle = articleRepository.findByIdForUpdate(id)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Article not found"));
 
         checkArticlePermission(existingArticle, currentUser);
 
-        categoryService.getCategory(article.getCategoryId());
+        // Old clients omit these fields; preserve metadata instead of silently clearing it.
+        if(!article.isSectionIdProvided()){
+            article.setSectionId(existingArticle.getSectionId());
+        }
+        if(!article.isSummaryProvided()){
+            article.setSummary(existingArticle.getSummary());
+        }
+        if(!article.isContentTypeProvided()){
+            article.setContentType(existingArticle.getContentType());
+        }
+        validateOrganization(article, existingArticle.getSectionId());
+        List<Long> tagIds = article.isTagIdsProvided() ? tagService.validateTagIds(article.getTagIds()) : null;
+        if(seriesRepository.hasConflictingSeries(id, article.getSectionId())){
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Article belongs to a series in another section");
+        }
 
         article.setUpdatedAt(LocalDateTime.now());
         articleRepository.update(id, article);
+        if(tagIds != null){
+            tagRepository.updateArticleTags(id, tagIds);
+        }
 
         Article updatedArticle = getArticle(id);
         articleRevisionRepository.saveSnapshot(updatedArticle, currentUser.getId(), updatedArticle.getUpdatedAt());
@@ -269,7 +311,8 @@ public class ArticleService {
     @Transactional
     public Article restoreRevision(Long articleId, Long revisionId, String authorizationHeader){
         User currentUser = currentUserService.getCurrentEnabledUser(authorizationHeader);
-        Article article = getArticle(articleId);
+        Article article = articleRepository.findByIdForUpdate(articleId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Article not found"));
         checkArticlePermission(article, currentUser);
         ArticleRevision revision = articleRevisionRepository.findByIdAndArticleId(revisionId, articleId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Article revision not found"));
@@ -282,6 +325,7 @@ public class ArticleService {
         article.setTitle(revision.getTitle());
         article.setContent(revision.getContent());
         article.setCategoryId(revision.getCategoryId());
+        validateOrganization(article, article.getSectionId());
         article.setUpdatedAt(LocalDateTime.now());
         articleRepository.update(articleId, article);
 
@@ -329,5 +373,18 @@ public class ArticleService {
 
     private String normalizeDraftText(String value){
         return value == null ? "" : value;
+    }
+
+    private String normalizeFilter(String value){
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private void validateOrganization(Article article, Long previousSectionId){
+        sectionService.validateAssignment(article.getSectionId(), previousSectionId);
+        Category category = categoryService.getCategory(article.getCategoryId());
+        if(article.getSectionId() != null && category.getSectionId() != null
+            && !Objects.equals(article.getSectionId(), category.getSectionId())){
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Article and category must belong to the same section");
+        }
     }
 }

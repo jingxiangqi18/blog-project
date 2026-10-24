@@ -7,7 +7,9 @@
       <el-button :icon="Refresh" @click="loadArticle">重试</el-button>
     </div>
 
-    <template v-else-if="article">
+    <div v-else-if="article" class="reading-layout" :class="{ 'with-document-navigation': article.sectionSlug !== 'life' }">
+      <DocumentNavigation v-if="article.sectionSlug !== 'life'" :article="article" :headings="headings" :active-heading="activeHeading" @anchor="navigate" @sequence="readingSequence = $event" />
+      <div class="reading-column">
       <article class="reader-panel panel">
         <div class="reader-cover">
           <div>
@@ -19,6 +21,7 @@
               </span>
             </div>
             <div class="card-meta">
+              <RouterLink v-if="article.sectionSlug" :to="{ path: '/articles', query: { sectionSlug: article.sectionSlug } }">{{ article.sectionName }}</RouterLink>
               <span class="category-chip">{{ article.categoryName || '未分类' }}</span>
               <span class="time-chip">
                 <el-icon><Calendar /></el-icon>
@@ -26,6 +29,10 @@
               </span>
             </div>
             <h2>{{ article.title }}</h2>
+            <p v-if="article.summary" class="reader-summary">{{ article.summary }}</p>
+            <div class="article-taxonomy" v-if="article.tags?.length">
+              <TechBadge v-for="tag in article.tags" :key="tag.id" :tag="tag" :to="{ path: '/articles', query: { tagSlug: tag.slug } }" />
+            </div>
             <div class="reader-stats">
               <span class="info-chip">
                 <el-icon><Reading /></el-icon>
@@ -76,6 +83,7 @@
             <button
               class="interaction-button"
               :class="{ active: articleLike.active }"
+              :aria-pressed="articleLike.active"
               type="button"
               :disabled="articleLike.loading"
               @click="toggleArticleLike"
@@ -87,6 +95,7 @@
             <button
               class="interaction-button"
               :class="{ active: articleFavorite.active }"
+              :aria-pressed="articleFavorite.active"
               type="button"
               :disabled="articleFavorite.loading"
               @click="toggleArticleFavorite"
@@ -99,6 +108,10 @@
         </footer>
       </article>
 
+      <nav v-if="readingSequence.previous || readingSequence.next" class="article-continuation" aria-label="连续阅读">
+        <RouterLink v-if="readingSequence.previous" :to="{ path: '/articles/' + readingSequence.previous.id, query: { seriesId: readingSequence.seriesId } }"><small>上一篇</small><strong>{{ readingSequence.previous.title }}</strong></RouterLink>
+        <RouterLink v-if="readingSequence.next" :to="{ path: '/articles/' + readingSequence.next.id, query: { seriesId: readingSequence.seriesId } }"><small>下一篇</small><strong>{{ readingSequence.next.title }}</strong></RouterLink>
+      </nav>
       <section class="panel comments-section">
         <div class="panel-title-row">
           <div>
@@ -282,7 +295,8 @@
           </article>
         </div>
       </section>
-    </template>
+      </div>
+    </div>
 
     <teleport to="body">
       <aside
@@ -321,6 +335,7 @@
         <p v-else class="internal-preview-error">知识卡片预览暂时无法加载</p>
       </aside>
 
+      <TransitionGroup name="card-window" move-class="no-window-move">
       <article
         v-for="cardWindow in knowledgeWindows"
         :key="cardWindow.key"
@@ -338,7 +353,7 @@
           @pointerdown="startKnowledgeWindowDrag(cardWindow, $event)"
           @dblclick="toggleKnowledgeWindowMaximize(cardWindow)"
         >
-          <span class="knowledge-window-mark">K</span>
+          <span class="knowledge-window-mark"><Layers :size="17" /></span>
           <span class="knowledge-window-title">
             <small>Knowledge card</small>
             <strong>{{ cardWindow.card?.title || '正在加载知识卡片' }}</strong>
@@ -378,10 +393,7 @@
           </div>
           <template v-else-if="cardWindow.card">
             <p class="knowledge-card-summary">{{ cardWindow.card.summary }}</p>
-            <div
-              class="markdown-body knowledge-window-markdown"
-              v-html="renderMarkdown(cardWindow.card.content || '')"
-            ></div>
+            <MarkdownContent class="knowledge-window-markdown" :content="cardWindow.card.content || ''" :title="cardWindow.card.title" />
             <footer class="knowledge-window-meta">
               <span>{{ cardWindow.card.createdByName || '知识卡片' }}</span>
               <span>更新于 {{ formatDate(cardWindow.card.updatedAt) }}</span>
@@ -398,6 +410,7 @@
           @pointerdown.stop="startKnowledgeWindowResize(cardWindow, $event)"
         ></button>
       </article>
+      </TransitionGroup>
     </teleport>
   </section>
 </template>
@@ -406,7 +419,11 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { ThumbsUp } from '@lucide/vue'
+import DocumentNavigation from '../components/DocumentNavigation.vue'
+import MarkdownContent from '../components/MarkdownContent.vue'
+import TechBadge from '../components/TechBadge.vue'
+import { useArticleOutline } from '../components/useArticleOutline'
+import { Layers, ThumbsUp } from '@lucide/vue'
 import {
   Back,
   Calendar,
@@ -443,7 +460,7 @@ import {
 } from '../api/blog'
 import { sessionState, signedIn } from '../state/session'
 import { canManageResource } from '../utils/permissions'
-import { markdownToPlainText, renderMarkdown } from '../utils/markdown'
+import { markdownToPlainText } from '../utils/markdown'
 
 const props = defineProps({
   id: {
@@ -490,6 +507,8 @@ const knowledgeCardPreview = reactive({
 })
 let articlePreviewTimer = null
 let knowledgeCardPreviewTimer = null
+let articlePreviewAnchor = null
+let knowledgeCardPreviewAnchor = null
 let knowledgeWindowSequence = 0
 let knowledgeWindowZIndex = 3600
 let activeKnowledgeWindowInteraction = null
@@ -498,7 +517,8 @@ const isSignedIn = signedIn
 const currentUserInitial = computed(() => (sessionState.user?.username || 'U').trim().slice(0, 1).toUpperCase())
 const wordCount = computed(() => (article.value?.content || '').trim().length)
 const readingMinutes = computed(() => (wordCount.value ? Math.max(1, Math.ceil(wordCount.value / 500)) : 0))
-const renderedArticle = computed(() => renderMarkdown(article.value?.content || ''))
+const { rendered: renderedArticle, headings, activeHeading, navigate } = useArticleOutline(computed(() => article.value?.content || ''), articleBodyRef, computed(() => article.value?.title || ''))
+const readingSequence = ref({ previous: null, next: null, seriesId: '' })
 const canManageArticle = computed(() => canManageResource(article.value))
 const articleAuthorName = computed(() => {
   return article.value?.authorName || article.value?.username || article.value?.authorUsername || '留白手记'
@@ -615,7 +635,9 @@ function positionArticlePreview(link){
 }
 
 async function showArticlePreview(link){
+  articlePreviewAnchor = link
   window.clearTimeout(articlePreviewTimer)
+  const requestId = ++articlePreview.requestId
   const articleId = Number(link.dataset.articleId)
   if(!Number.isFinite(articleId)){
     return
@@ -630,7 +652,6 @@ async function showArticlePreview(link){
     return
   }
 
-  const requestId = ++articlePreview.requestId
   try{
     const previewArticle = await getArticle(articleId)
     articlePreviewCache.set(articleId, previewArticle)
@@ -675,7 +696,9 @@ function positionKnowledgeCardPreview(link){
 }
 
 async function showKnowledgeCardPreview(link){
+  knowledgeCardPreviewAnchor = link
   window.clearTimeout(knowledgeCardPreviewTimer)
+  const requestId = ++knowledgeCardPreview.requestId
   const cardId = Number(link.dataset.knowledgeCardId)
   if(!Number.isFinite(cardId)){
     return
@@ -690,7 +713,6 @@ async function showKnowledgeCardPreview(link){
     return
   }
 
-  const requestId = ++knowledgeCardPreview.requestId
   try{
     const card = await getKnowledgeCard(cardId)
     knowledgeCardCache.set(cardId, card)
@@ -730,6 +752,11 @@ function hideLinkPreviews(){
 function dismissLinkPreviews(){
   dismissArticlePreview()
   dismissKnowledgeCardPreview()
+}
+
+function updateLinkPreviewPositions(){
+  if(articlePreview.visible && articlePreviewAnchor?.isConnected) positionArticlePreview(articlePreviewAnchor)
+  if(knowledgeCardPreview.visible && knowledgeCardPreviewAnchor?.isConnected) positionKnowledgeCardPreview(knowledgeCardPreviewAnchor)
 }
 
 function handleArticleLinkMouseOver(event){
@@ -1235,12 +1262,14 @@ watch(
 
 onMounted(() => {
   window.addEventListener('resize', handleKnowledgeViewportResize)
+  window.addEventListener('scroll', updateLinkPreviewPositions, { capture: true, passive: true })
 })
 
 onBeforeUnmount(() => {
   window.clearTimeout(articlePreviewTimer)
   window.clearTimeout(knowledgeCardPreviewTimer)
   window.removeEventListener('resize', handleKnowledgeViewportResize)
+  window.removeEventListener('scroll', updateLinkPreviewPositions, true)
   stopKnowledgeWindowInteraction()
 })
 </script>

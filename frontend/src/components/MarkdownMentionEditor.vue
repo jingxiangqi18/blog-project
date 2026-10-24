@@ -3,14 +3,13 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { autocompletion, closeCompletion, completionKeymap, startCompletion } from '@codemirror/autocomplete'
+import { createApp, h, onBeforeUnmount, onMounted, reactive, ref, useId, watch } from 'vue'
+import ReferencePicker from './ReferencePicker.vue'
+import { autocompletion } from '@codemirror/autocomplete'
 import { markdown } from '@codemirror/lang-markdown'
-import { EditorState, RangeSetBuilder } from '@codemirror/state'
-import { Decoration, EditorView, ViewPlugin, WidgetType, keymap, placeholder as editorPlaceholder } from '@codemirror/view'
+import { EditorState, Prec, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state'
+import { Decoration, EditorView, ViewPlugin, WidgetType, keymap, placeholder as editorPlaceholder, showTooltip, tooltips } from '@codemirror/view'
 import { basicSetup } from 'codemirror'
-import { listArticles, listKnowledgeCards } from '../api/blog'
-import { markdownToPlainText } from '../utils/markdown'
 
 const props = defineProps({
   modelValue: {
@@ -27,16 +26,17 @@ const emit = defineEmits(['update:modelValue', 'cursor-change', 'scroll'])
 const editorHost = ref(null)
 let editorView = null
 
-const cardSection = { name: '知识卡片', rank: 3 }
 const referencePattern = /\[([^\]\n]+)\]\((article|card):(\d+)\)/g
-const ARTICLE_PAGE_SIZE = 5
-const articleMentionState = {
-  keyword: '',
-  requestedPage: 1,
-  loadedPage: 1,
-  totalPages: 1,
-  totalElements: 0,
-}
+const pickerId = `reference-results-${useId()}`
+let pickerInstance = null, pickerHost = null
+const dismissReference = StateEffect.define()
+const referenceDismissed = StateField.define({
+  create: () => false,
+  update(value, transaction) {
+    for (const effect of transaction.effects) if (effect.is(dismissReference)) return effect.value
+    return transaction.docChanged ? false : value
+  },
+})
 
 class ReferenceWidget extends WidgetType {
   constructor(label, type){
@@ -104,221 +104,81 @@ function escapeReferenceLabel(value){
   return value.replace(/\]/g, '\\]').replace(/[\r\n]+/g, ' ')
 }
 
-function articleSummary(article){
-  const summary = markdownToPlainText(article.content || '')
-  return summary ? summary.slice(0, 90) : '暂无正文摘要'
+function mentionContext(state) {
+  const selection = state.selection.main
+  if (!selection.empty) return null
+  const line = state.doc.lineAt(selection.head)
+  const match = state.sliceDoc(line.from, selection.head).match(/@([^@\n]*)$/u)
+  return match ? { from: selection.head - match[0].length, to: selection.head, keyword: match[1].trim() } : null
 }
 
-function referenceApply(type, item){
-  return (view, completion, from, to) => {
-    const label = escapeReferenceLabel(item.title)
-    const reference = `[${label}](${type}:${item.id})`
-    view.dispatch({
-      changes: { from, to, insert: reference },
-      selection: { anchor: from + reference.length },
-    })
-    view.focus()
-  }
+function closeReference(focus = true) {
+  if (!editorView) return
+  editorView.dispatch({ effects: dismissReference.of(true) })
+  if (focus) editorView.focus()
 }
 
-function resetArticleMentionState(keyword){
-  articleMentionState.keyword = keyword
-  articleMentionState.requestedPage = 1
-  articleMentionState.loadedPage = 1
-  articleMentionState.totalPages = 1
-  articleMentionState.totalElements = 0
+function insertReference({ type, item }) {
+  const context = editorView && mentionContext(editorView.state)
+  if (!context) { closeReference(); return }
+  const reference = `[${escapeReferenceLabel(item.title)}](${type}:${item.id})`
+  editorView.dispatch({
+    changes: { from: context.from, to: context.to, insert: reference },
+    selection: { anchor: context.from + reference.length },
+    effects: dismissReference.of(true),
+  })
+  editorView.focus()
 }
 
-function reopenCompletion(view){
-  closeCompletion(view)
-  window.setTimeout(() => {
-    view.focus()
-    startCompletion(view)
-  }, 0)
-}
-
-function changeArticleMentionPage(view, page){
-  articleMentionState.requestedPage = Math.min(
-    articleMentionState.totalPages,
-    Math.max(1, page),
-  )
-  reopenCompletion(view)
-}
-
-function articleSection(keyword, page, totalPages, totalElements){
+// CodeMirror owns anchoring and viewport collision; Vue owns the picker surface.
+function createReferenceTooltip(view) {
+  const dom = document.createElement('div')
+  dom.className = 'reference-picker-host'
+  dom.style.maxWidth = `${document.documentElement.clientWidth - 32}px`
+  pickerHost = dom
+  const context = reactive({ keyword: mentionContext(view.state)?.keyword || '' })
+  const app = createApp({
+    render: () => h(ReferencePicker, {
+      keyword: context.keyword,
+      currentArticleId: props.currentArticleId,
+      listId: pickerId,
+      ref: instance => { pickerInstance = instance },
+      onChoose: insertReference,
+      onClose: () => closeReference(),
+      onActive: id => {
+        if (id) view.contentDOM.setAttribute('aria-activedescendant', id)
+        else view.contentDOM.removeAttribute('aria-activedescendant')
+      },
+    }),
+  })
+  app.config.idPrefix = pickerId
+  view.contentDOM.setAttribute('aria-autocomplete', 'list')
+  view.contentDOM.setAttribute('aria-controls', pickerId)
+  view.contentDOM.setAttribute('aria-expanded', 'true')
+  app.mount(dom)
   return {
-    name: '站内文章',
-    rank: 1,
-    header: () => {
-      const header = document.createElement('li')
-      header.className = 'cm-completionSection cm-mention-section-heading'
-
-      const title = document.createElement('strong')
-      title.textContent = keyword ? `搜索“${keyword}”` : '最近发布的文章'
-
-      const meta = document.createElement('span')
-      meta.textContent = `${totalElements} 篇 · ${page} / ${totalPages} 页`
-
-      header.append(title, meta)
-      return header
+    dom,
+    offset: { x: 0, y: 8 },
+    positioned(space) { dom.style.maxWidth = `${Math.max(0, space.right - space.left)}px` },
+    update(update) {
+      const match = mentionContext(update.state)
+      if (match) context.keyword = match.keyword
+    },
+    destroy() {
+      app.unmount()
+      pickerInstance = null; pickerHost = null
+      for (const name of ['aria-autocomplete', 'aria-controls', 'aria-expanded', 'aria-activedescendant']) view.contentDOM.removeAttribute(name)
     },
   }
 }
 
-function navigationSection(page, totalPages){
-  return {
-    name: '翻页',
-    rank: 2,
-    header: () => {
-      const header = document.createElement('li')
-      header.className = 'cm-completionSection cm-mention-pagination-heading'
-      header.textContent = `第 ${page} 页，共 ${totalPages} 页`
-      return header
-    },
-  }
-}
+const referenceTooltip = showTooltip.compute([referenceDismissed, 'doc', 'selection'], state => {
+  const context = mentionContext(state)
+  return !state.field(referenceDismissed) && context ? { pos: context.from, end: context.to, create: createReferenceTooltip } : null
+})
 
-function completionContext(completion){
-  if(!completion.referenceKind || !completion.summary){
-    return null
-  }
-
-  const summary = document.createElement('span')
-  summary.className = 'cm-mention-option-summary'
-  summary.textContent = completion.summary
-  return summary
-}
-
-function completionMark(completion){
-  const mark = document.createElement('span')
-  mark.className = `cm-mention-option-mark ${completion.referenceKind || 'action'}`
-  mark.textContent = completion.referenceKind === 'card'
-    ? 'K'
-    : completion.referenceKind === 'article'
-      ? 'A'
-      : completion.referenceKind === 'error'
-        ? '!'
-        : completion.referenceKind === 'empty'
-          ? '0'
-          : completion.navigationDirection === 'previous' ? '‹' : '›'
-  return mark
-}
-
-async function mentionCompletionSource(context){
-  const line = context.state.doc.lineAt(context.pos)
-  const sourceBeforeCursor = context.state.sliceDoc(line.from, context.pos)
-  const match = sourceBeforeCursor.match(/@([^@\n]*)$/u)
-
-  if(!match){
-    return null
-  }
-
-  const from = context.pos - match[0].length
-  const keyword = match[1].trim()
-
-  if(articleMentionState.keyword !== keyword){
-    resetArticleMentionState(keyword)
-  }
-
-  const requestedPage = articleMentionState.requestedPage
-  const [articlesResult, cardsResult] = await Promise.allSettled([
-    listArticles({ page: requestedPage, size: ARTICLE_PAGE_SIZE, keyword }),
-    listKnowledgeCards({ keyword }),
-  ])
-
-  if(context.aborted || articleMentionState.keyword !== keyword || articleMentionState.requestedPage !== requestedPage){
-    return null
-  }
-
-  let articles = []
-  let articleRequestFailed = false
-
-  if(articlesResult.status === 'fulfilled'){
-    const response = articlesResult.value
-    articles = (response.content || [])
-      .filter((article) => String(article.id) !== String(props.currentArticleId))
-    articleMentionState.loadedPage = requestedPage
-    articleMentionState.totalPages = Math.max(1, response.totalPages || 1)
-    articleMentionState.totalElements = response.totalElements ?? articles.length
-  }else{
-    articleRequestFailed = true
-  }
-
-  const cards = cardsResult.status === 'fulfilled' ? cardsResult.value : []
-  const currentPage = articleMentionState.loadedPage
-  const totalPages = articleMentionState.totalPages
-  const articlesSection = articleSection(
-    keyword,
-    currentPage,
-    totalPages,
-    articleMentionState.totalElements,
-  )
-  const pageSection = navigationSection(currentPage, totalPages)
-  const articleOptions = articles.map((article) => ({
-    label: article.title,
-    detail: [article.authorName, article.categoryName || '未分类'].filter(Boolean).join(' · '),
-    summary: articleSummary(article),
-    referenceKind: 'article',
-    section: articlesSection,
-    boost: 2,
-    apply: referenceApply('article', article),
-  }))
-
-  if(articleRequestFailed){
-    articleOptions.push({
-      label: '文章加载失败，选择此项重试',
-      detail: '重试',
-      referenceKind: 'error',
-      section: articlesSection,
-      apply: reopenCompletion,
-    })
-  }else if(articles.length === 0){
-    articleOptions.push({
-      label: keyword ? '没有找到匹配的文章' : '当前没有可引用的文章',
-      detail: keyword ? '继续输入可调整关键词' : '',
-      referenceKind: 'empty',
-      section: articlesSection,
-      apply: (view) => closeCompletion(view),
-    })
-  }
-
-  const navigationOptions = []
-  if(currentPage > 1){
-    navigationOptions.push({
-      label: '上一页',
-      detail: `${currentPage - 1} / ${totalPages}`,
-      navigationDirection: 'previous',
-      section: pageSection,
-      apply: (view) => changeArticleMentionPage(view, currentPage - 1),
-    })
-  }
-  if(currentPage < totalPages){
-    navigationOptions.push({
-      label: '下一页',
-      detail: `${currentPage + 1} / ${totalPages}`,
-      navigationDirection: 'next',
-      section: pageSection,
-      apply: (view) => changeArticleMentionPage(view, currentPage + 1),
-    })
-  }
-
-  return {
-    from,
-    filter: false,
-    options: [
-      ...articleOptions,
-      ...navigationOptions,
-      ...cards.map((card) => ({
-        label: card.title,
-        detail: card.summary,
-        summary: card.summary || '暂无摘要',
-        referenceKind: 'card',
-        section: cardSection,
-        boost: 1,
-        apply: referenceApply('card', card),
-      })),
-    ],
-  }
+function closeReferenceOutside(event) {
+  if (pickerHost && !pickerHost.contains(event.target) && !editorView?.dom.contains(event.target)) closeReference(false)
 }
 
 function selectionPayload(view){
@@ -352,24 +212,14 @@ onMounted(() => {
         EditorView.lineWrapping,
         editorPlaceholder('使用 Markdown 写作，输入 @ 可以引用文章或知识卡片'),
         referenceDecorations,
-        autocompletion({
-          override: [mentionCompletionSource],
-          activateOnTyping: true,
-          activateOnTypingDelay: 220,
-          maxRenderedOptions: 20,
-          icons: false,
-          tooltipClass: () => 'mention-completion-tooltip',
-          optionClass: (completion) => [
-            completion.referenceKind ? `mention-${completion.referenceKind}-option` : '',
-            completion.navigationDirection ? 'mention-navigation-option' : '',
-            completion.navigationDirection ? `mention-navigation-${completion.navigationDirection}` : '',
-          ].filter(Boolean).join(' '),
-          addToOptions: [
-            { render: completionMark, position: 10 },
-            { render: completionContext, position: 70 },
-          ],
-        }),
-        keymap.of(completionKeymap),
+        autocompletion({ override: [] }),
+        referenceDismissed,
+        referenceTooltip,
+        tooltips({ parent: document.body, position: 'fixed', tooltipSpace: () => ({ left: 16, top: 90, right: document.documentElement.clientWidth - 16, bottom: window.innerHeight - 16 }) }),
+        Prec.highest(keymap.of(['ArrowDown', 'ArrowUp', 'Home', 'End', 'PageDown', 'PageUp', 'Enter', 'Escape', 'Tab'].map(key => ({
+          key,
+          run: () => pickerInstance?.handleKey(key) || false,
+        })))),
         EditorView.updateListener.of((update) => {
           if(update.docChanged){
             emit('update:modelValue', update.state.doc.toString())
@@ -413,6 +263,8 @@ onMounted(() => {
     }),
   })
 
+  document.addEventListener('pointerdown', closeReferenceOutside)
+  document.addEventListener('focusin', closeReferenceOutside)
   editorView.scrollDOM.addEventListener('scroll', emitScroll, { passive: true })
   emit('cursor-change', selectionPayload(editorView))
 })
@@ -436,6 +288,8 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', closeReferenceOutside)
+  document.removeEventListener('focusin', closeReferenceOutside)
   if(editorView){
     editorView.scrollDOM.removeEventListener('scroll', emitScroll)
     editorView.destroy()

@@ -8,6 +8,8 @@
 
 推荐的免费部署结构是 GitHub Pages（前端）+ Render Docker Web Service（后端）+ TiDB Cloud Starter（数据库）。
 
+内容分区、标签和系列专题的 API、兼容规则与升级顺序见 [后端内容组织文档](backend/CONTENT_ORGANIZATION.md)。多级章节、轻量阅读目录见 [系列阅读 API](backend/SERIES_READING.md)。已有数据库应依次执行尚未完成的 `backend/database/20261023_content_organization.sql` 和 `backend/database/20261024_series_reading.sql` 再运行升级后的后端；新数据库直接使用完整 `schema.sql`。
+
 ## 本地开发
 
 ### 后端

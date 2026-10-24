@@ -24,8 +24,8 @@ public class CategoryRepository {
 
     public Category save(Category category){
         String sql = """
-                INSERT INTO categories(name)
-                VALUES(?)
+                INSERT INTO categories(name, section_id)
+                VALUES(?, ?)
                 """;
 
         KeyHolder keyHolder = new GeneratedKeyHolder();
@@ -37,6 +37,7 @@ public class CategoryRepository {
             );
 
             preparedStatement.setString(1, category.getName());
+            preparedStatement.setObject(2, category.getSectionId());
 
             return preparedStatement;
         }, keyHolder);
@@ -51,28 +52,20 @@ public class CategoryRepository {
     }
 
     public List<Category> findAll(){
-        String sql = """
-                SELECT * 
-                FROM categories
-                ORDER BY id DESC
-                """;
+        return findAll(null);
+    }
 
-        return jdbcTemplate.query(sql, (rs, rowNum) -> {
-            Category category = new Category();
-
-            category.setId(rs.getLong("id"));
-            category.setName(rs.getString("name"));
-
-            return category;
-        });
+    public List<Category> findAll(Long sectionId){
+        String sql = baseSelect();
+        if(sectionId == null){
+            return jdbcTemplate.query(sql + " ORDER BY categories.id DESC", this::mapRow);
+        }
+        return jdbcTemplate.query(sql + " WHERE categories.section_id = ? OR categories.section_id IS NULL ORDER BY categories.id DESC",
+            this::mapRow, sectionId);
     }
 
     public Optional<Category> findById(Long id){
-        String sql = """
-                SELECT id, name
-                FROM categories
-                WHERE id = ?
-                """;
+        String sql = baseSelect() + " WHERE categories.id = ?";
 
         List<Category> categories = jdbcTemplate.query(sql, this::mapRow, id);
 
@@ -88,6 +81,9 @@ public class CategoryRepository {
 
         category.setId(rs.getLong("id"));
         category.setName(rs.getString("name"));
+        category.setSectionId(rs.getObject("section_id", Long.class));
+        category.setSectionSlug(rs.getString("section_slug"));
+        category.setSectionName(rs.getString("section_name"));
 
         return category;
     }
@@ -95,13 +91,14 @@ public class CategoryRepository {
     public int update(Long id, Category category){
         String sql = """
                 UPDATE categories
-                SET name = ?
+                SET name = ?, section_id = ?
                 WHERE id = ?
                 """;
 
         return jdbcTemplate.update(
             sql,
             category.getName(),
+            category.getSectionId(),
             id
         );
     }
@@ -113,5 +110,22 @@ public class CategoryRepository {
                 """;
 
         return jdbcTemplate.update(sql, id);
+    }
+
+    public boolean hasConflictingContent(Long categoryId, Long sectionId){
+        Long count = jdbcTemplate.queryForObject("""
+            SELECT COUNT(*) FROM articles
+            WHERE category_id = ? AND section_id IS NOT NULL AND section_id <> ?
+            """, Long.class, categoryId, sectionId);
+        Long seriesCount = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM series WHERE category_id = ? AND section_id <> ?", Long.class, categoryId, sectionId);
+        return count > 0 || seriesCount > 0;
+    }
+
+    private String baseSelect(){
+        return """
+            SELECT categories.*, sections.slug AS section_slug, sections.name AS section_name
+            FROM categories LEFT JOIN sections ON categories.section_id = sections.id
+            """;
     }
 }

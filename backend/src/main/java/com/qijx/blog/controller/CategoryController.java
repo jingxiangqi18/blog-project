@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.qijx.blog.entity.Article;
@@ -37,8 +38,11 @@ public class CategoryController {
     }
 
     @GetMapping
-    public List<Category> listCategories(){
-        return categoryService.listCategories();
+    public List<Category> listCategories(
+        @RequestParam(required = false) Long sectionId,
+        @RequestParam(required = false) String sectionSlug
+    ){
+        return categoryService.listCategories(sectionId, sectionSlug);
     }
 
     @GetMapping("/{id}")

@@ -1,0 +1,337 @@
+import assert from 'node:assert/strict'
+import { mkdir } from 'node:fs/promises'
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
+const origin = process.env.BLOG_TEST_URL || 'http://127.0.0.1:5177'
+const output = '/tmp/blog-redesign'
+await mkdir(output, { recursive: true })
+const browser = await chromium.launch({ headless: true })
+const errors = []
+const checkWidth = async page => {
+  const overflow = await page.evaluate(() => [...document.querySelectorAll('main *')].filter(el => { const s=getComputedStyle(el), r=el.getBoundingClientRect(); return r.width && r.right > innerWidth + 2 && s.position !== 'fixed' && !el.closest('pre, table, .cm-scroller, .el-scrollbar, .user-table') }).map(el=>({tag:el.tagName,class:el.className})).slice(0,8))
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2), true, JSON.stringify(overflow))
+}
+const wait = page => page.waitForTimeout(900)
+const checkPicker = async page => {
+  assert(await page.locator('.reference-picker').evaluate(el => {
+    const box = el.getBoundingClientRect(), footer = el.querySelector('footer').getBoundingClientRect(), search = el.querySelector('.reference-picker-search').getBoundingClientRect()
+    return box.left >= 15 && box.right <= document.documentElement.clientWidth - 15 && box.top >= 80 && box.bottom <= innerHeight && footer.bottom <= box.bottom + 1 && search.top >= box.top
+  }))
+}
+try {
+  if (!process.env.SKIP_LIVE) {
+  const live = await browser.newContext()
+  const page = await live.newPage()
+  page.on('pageerror', e => errors.push(e.message))
+  for(const width of [1440,1024,768,390]) {
+    await page.setViewportSize({width,height:960})
+    for(const [name,path] of [['home','/'],['journal','/articles'],['reading','/articles/18'],['knowledge','/knowledge'],['collections','/collections']]) {
+      await page.goto(origin + '/#' + path)
+      await page.waitForLoadState('networkidle'); await wait(page)
+      await checkWidth(page)
+      assert.equal(await page.locator('.site-brand').count(),1)
+      await page.screenshot({path:`${output}/${name}-${width}.png`})
+    }
+  }
+  await live.close()
+  }
+
+  const sections=[{id:1,slug:'technology',name:'技术',enabled:true},{id:2,slug:'life',name:'生活',enabled:true}]
+  const tags=[{id:1,name:'Java',slug:'java'},{id:2,name:'Spring Boot',slug:'spring-boot'},{id:3,name:'面向对象',slug:'oop'},{id:4,name:'Redis',slug:'redis'},{id:5,name:'MySQL',slug:'mysql'}]
+  const card=id=>({id,title:id===1?'Filter':'JWT',summary:'一个概念，一张卡片。',content:'# '+(id===1?'Filter':'JWT')+'\n\n## 核心概念\n\n'+('保留阅读上下文，让知识保持关联。\n\n'.repeat(12)),createdBy:1,createdByName:'Jakin',createdAt:'2026-10-24T08:00:00',updatedAt:'2026-10-24T08:00:00'})
+  const article=id=>({id,title:id===1?'理解 Spring Boot 的请求链路':'从源码理解依赖注入',sectionId:1,sectionSlug:'technology',sectionName:'技术',categoryId:1,categoryName:'Java 后端',authorId:1,authorName:'Jakin',summary:'从一次请求开始，理解系统各层之间的协作。',contentType:'general',tags,tagIds:tags.map(tag=>tag.id),createdAt:'2026-10-24T08:00:00',updatedAt:'2026-10-24T08:00:00',content:'## 请求从哪里开始\n\n先了解 [Filter](card:1)，再看 [JWT](card:2)。另见 [依赖注入](article:2)。\n\n'+('每一个请求都经过清晰的处理流程。这是一段用于验证长文滚动的测试正文。\n\n'.repeat(8))+'### 路由与控制器\n\n```java\n@RestController\nclass ArticleController {\n  public String get() { return "hello"; }\n}\n```\n\n## 请求从哪里开始\n\n'+('观察不同层级之间的职责。\n\n'.repeat(10))+'#### 小结\n\n> 保持简单，明确边界。\n\n- 请求\n- 响应\n\n| 层级 | 职责 |\n| --- | --- |\n| Controller | 接收请求 |'})
+  const referenceArticles=[article(1),article(2),...Array.from({length:10},(_,i)=>({...article(i+3),title:i===0?'技术文档与请求链路的设计细节'.repeat(6):`Java 请求链路笔记 ${i+3}`}))]
+  const series={id:1,title:'Java 后端学习路径',slug:'java-backend',sectionId:1,sectionSlug:'technology',sectionName:'技术',createdBy:1,articles:[{sortOrder:1,article:article(1)},{sortOrder:2,article:article(2)}]}
+  const directory={...series,chapters:[{id:10,parentId:null,title:'01 后端基础',sortOrder:1},{id:11,parentId:10,title:'Spring Boot',sortOrder:1}],articles:[{id:1,title:article(1).title,chapterId:11,sortOrder:1},{id:2,title:article(2).title,chapterId:11,sortOrder:2}]}
+  const writes=[]
+  let searchFailure = true, pickerFailure = true
+  const context=await browser.newContext({viewport:{width:1440,height:1000},permissions:['clipboard-read','clipboard-write']})
+  await context.addInitScript(()=>localStorage.setItem('blog-studio-session',JSON.stringify({token:'test-only',user:{id:1,username:'Jakin',role:'ADMIN'}})))
+  const intercept = async route=>{
+    const req=route.request(), url=new URL(req.url()), p=url.pathname
+    if(!p.startsWith('/api/')) return route.continue()
+    if(req.method()!=='GET') writes.push({path:p,method:req.method(),body:req.postDataJSON()})
+    let result=[]
+    if(p==='/api/auth/login'||p==='/api/auth/register') result={token:'test-only',id:1,username:'Jakin',role:'ADMIN'}
+    else if(p==='/api/auth/me') result={id:1,username:'Jakin',role:'ADMIN'}
+    else if(p.startsWith('/api/sections')) result=sections
+    else if(p==='/api/categories') result=[{id:1,name:'Java 后端',sectionId:1,sectionSlug:'technology'}]
+    else if(p==='/api/tags') result=tags
+    else if(p==='/api/articles') {
+      const keyword=url.searchParams.get('keyword')
+      if(keyword==='error'&&searchFailure) { searchFailure=false; return route.fulfill({status:503,json:{message:'Search unavailable'}}) }
+      if(keyword==='picker-error'&&pickerFailure) { pickerFailure=false; return route.fulfill({status:503,json:{message:'Search unavailable'}}) }
+      if(keyword==='slow') await new Promise(resolve=>setTimeout(resolve,600))
+      const size=Number(url.searchParams.get('size')||10), page=Number(url.searchParams.get('page')||1)
+      result={content:keyword==='no-results'?[]:keyword==='batch'?referenceArticles.slice((page-1)*size,page*size):[article(1),article(2)],totalElements:keyword==='no-results'?0:keyword==='batch'?12:2,totalPages:keyword==='batch'?Math.ceil(12/size):1}
+    }
+    else if(/^\/api\/articles\/\d+$/.test(p)) result={...article(Number(p.split('/').pop())),...(req.method()==='PUT'?req.postDataJSON():{})}
+    else if(/\/api\/articles\/\d+\/series$/.test(p)) result=[series]
+    else if(p.endsWith('/directory')) result=directory
+    else if(p==='/api/series') result={content:[series],totalElements:1,totalPages:1}
+    else if(p==='/api/series/1') result=series
+    else if(p==='/api/articles/1/revisions') result=[{id:1,revisionNumber:1,title:'原始版本',createdAt:'2026-10-24T08:00:00'}]
+    else if(p==='/api/articles/1/revisions/1') result={id:1,revisionNumber:1,title:'原始版本',content:'## 原始正文',categoryId:1,createdAt:'2026-10-24T08:00:00'}
+    else if(p==='/api/articles/1/revisions/1/restore') result=article(1)
+    else if(p==='/api/series/1/chapters' && req.method()==='POST') { const item={id:12,...req.postDataJSON(),sortOrder:2}; directory.chapters.push(item); result=item }
+    else if(p==='/api/series/1/chapters/order') { req.postDataJSON().chapterIds.forEach((id,i)=>{directory.chapters.find(g=>g.id===id).sortOrder=i+1}); result=directory.chapters }
+    else if(p==='/api/series/1/articles/1/chapter') { directory.articles[0].chapterId=req.postDataJSON().chapterId; result={} }
+    else if(p==='/api/knowledge-cards') result=url.searchParams.get('keyword')==='batch'?[card(1),card(2),...Array.from({length:5},(_,i)=>({...card(i+3),title:`知识概念 ${i+3}`}))]:[card(1),card(2)]
+    else if(/^\/api\/knowledge-cards\/\d+$/.test(p)) result=card(Number(p.split('/').pop()))
+    else if(p==='/api/users/me/articles') result=[article(1)]
+    else if(p==='/api/users/me/favorites') result=[]
+    else if(p==='/api/users/me/comments') result=[]
+    else if(p==='/api/users') result=[{id:1,username:'Jakin',role:'ADMIN',enabled:true},{id:2,username:'Linda',role:'USER',enabled:true}]
+    else if(p.endsWith('/likes')||p.endsWith('/favorites')) result={count:1,active:req.method()==='POST'}
+    else if(p.endsWith('/draft')&&req.method()==='GET') return route.fulfill({status:204})
+    else if(p.endsWith('/draft')||p.endsWith('/drafts')) result={id:1,...req.postDataJSON(),updatedAt:'2026-10-24T08:00:00'}
+    await route.fulfill({json:result})
+  }
+  await context.route('**/api/**',intercept)
+  const p=await context.newPage()
+  p.on('pageerror',e=>errors.push(e.message))
+  await p.goto(origin+'/#/articles')
+  await p.locator('.section-navigation .fluid-tab').first().waitFor()
+  await wait(p)
+  const badgeColors=await p.locator('.article-card').first().locator('.tech-badge').evaluateAll(nodes=>nodes.map(el=>getComputedStyle(el).backgroundColor))
+  assert.equal(new Set(badgeColors).size,5)
+  await Promise.all([p.waitForRequest(r=>new URL(r.url()).pathname==='/api/articles'&&new URL(r.url()).searchParams.get('tagSlug')==='redis'),p.locator('.article-card').first().getByRole('button',{name:'Redis',exact:true}).click()])
+  await p.locator('.article-card').first().getByRole('button',{name:'Redis',exact:true}).waitFor()
+  assert.equal(await p.locator('.article-card').first().getByRole('button',{name:'Redis',exact:true}).getAttribute('aria-pressed'),'true')
+  await p.getByRole('button',{name:'清空筛选',exact:true}).click()
+  await p.locator('.article-card').first().waitFor(); await wait(p)
+  await p.locator('.article-card').first().hover()
+  await p.waitForTimeout(400)
+  assert(await p.locator('.article-card').first().evaluate(el=>new DOMMatrix(getComputedStyle(el).transform).m42 < -2))
+  await p.locator('.section-navigation .fluid-tab').first().focus()
+  await Promise.all([p.waitForRequest(r=>new URL(r.url()).pathname==='/api/articles'&&new URL(r.url()).searchParams.get('sectionSlug')==='technology'),p.keyboard.press('ArrowRight')])
+  await wait(p)
+  assert.equal(await p.locator('.primary-navigation .primary-nav-link.active').count(),1)
+  assert.equal(await p.locator('.primary-navigation .primary-nav-link.active').innerText(),'文章')
+  assert.equal(await p.locator('.primary-navigation').getByText('技术',{exact:true}).count(),0)
+  await p.getByRole('button',{name:'文章分区',exact:true}).click()
+  await p.locator('.navigation-dropdown:visible').getByRole('menuitem',{name:'技术',exact:true}).waitFor()
+  await wait(p)
+  await p.screenshot({path:output+'/navigation-sections.png'})
+  await p.keyboard.press('Escape')
+  await p.getByRole('button',{name:'内容目录',exact:true}).click()
+  await p.locator('.navigation-dropdown:visible').getByRole('menuitem',{name:'系列专题',exact:true}).waitFor()
+  await p.locator('.navigation-dropdown:visible').getByRole('menuitem',{name:'分类索引',exact:true}).waitFor()
+  await p.keyboard.press('Escape')
+  assert(await p.locator('.section-navigation .fluid-tabs').evaluate(el=>{
+    const active=el.querySelector('.fluid-tab.active').getBoundingClientRect(), indicator=el.querySelector('.fluid-tabs-indicator').getBoundingClientRect()
+    return Math.abs(active.x-indicator.x)<1&&Math.abs(active.width-indicator.width)<1
+  }))
+  await p.getByRole('button',{name:'搜索手记',exact:true}).click()
+  await p.locator('.global-search-input input').waitFor()
+  await p.getByRole('textbox',{name:'搜索文章',exact:true}).fill('请求')
+  await p.waitForRequest(r=>new URL(r.url()).pathname==='/api/articles'&&new URL(r.url()).searchParams.get('keyword')==='请求')
+  await p.locator('.search-result').first().waitFor()
+  await p.keyboard.press('ArrowDown')
+  assert.equal(await p.locator('.search-result').first().evaluate(el=>el===document.activeElement),true)
+  await p.keyboard.press('Enter')
+  await p.waitForURL('**/#/articles/1')
+  await wait(p)
+  await p.keyboard.press('Control+k')
+  await p.getByRole('textbox',{name:'搜索文章',exact:true}).fill('no-results')
+  await p.getByText('没有找到相关手记',{exact:true}).waitFor()
+  await p.getByRole('textbox',{name:'搜索文章',exact:true}).fill('error')
+  await p.getByText('搜索暂时不可用，请稍后重试',{exact:true}).waitFor()
+  await p.locator('.search-dialog').getByRole('button',{name:'重试',exact:true}).click()
+  await p.locator('.search-result').first().waitFor()
+  await p.getByRole('textbox',{name:'搜索文章',exact:true}).fill('batch')
+  await p.getByRole('button',{name:'查看全部 12 篇结果'}).waitFor()
+  await p.screenshot({path:output+'/global-search.png'})
+  await p.setViewportSize({width:390,height:844})
+  await checkWidth(p)
+  assert(await p.locator('.search-dialog').evaluate(el=>{const rect=el.getBoundingClientRect(); return rect.left>=0&&rect.right<=innerWidth}))
+  await p.screenshot({path:output+'/global-search-mobile.png'})
+  await p.setViewportSize({width:1440,height:1000})
+  await p.getByRole('button',{name:'查看全部 12 篇结果'}).click()
+  await p.waitForURL('**/#/articles?keyword=batch')
+  assert.equal(await p.getByPlaceholder('搜索标题、正文或分类').inputValue(),'batch')
+  await p.goto(origin+'/#/articles/1/edit')
+  await p.locator('.cm-content').waitFor()
+  await p.locator('.markdown-toolbar').getByRole('button',{name:'预览',exact:true}).click()
+  assert.equal(await p.locator('.markdown-input-pane').isVisible(),false)
+  await p.keyboard.press('ArrowLeft')
+  assert.equal(await p.locator('.markdown-input-pane').isVisible(),true)
+  await p.keyboard.press('Home')
+  assert.equal(await p.locator('.markdown-preview-pane').isVisible(),false)
+  await p.locator('.cm-content').click()
+  await p.keyboard.press('Control+End')
+  await p.keyboard.type('\n@batch')
+  await p.locator('.reference-picker').waitFor()
+  await p.locator('.reference-result').first().waitFor()
+  assert.equal(await p.locator('.reference-result[aria-selected="true"]').count(),1)
+  await wait(p); await checkPicker(p)
+  await p.locator('.reference-picker').evaluate(el=>{el.dataset.instance='retained'})
+  await p.keyboard.type('t')
+  await p.waitForRequest(r=>new URL(r.url()).pathname==='/api/articles'&&new URL(r.url()).searchParams.get('keyword')==='batcht')
+  assert.equal(await p.locator('.reference-picker').getAttribute('data-instance'),'retained')
+  await p.keyboard.press('Backspace')
+  await p.locator('.reference-result').first().waitFor()
+  await p.keyboard.press('Tab')
+  assert(await p.getByRole('combobox',{name:'搜索引用内容'}).evaluate(el=>el===document.activeElement))
+  const sourceBeforeSearch=await p.locator('.cm-content').innerText()
+  await p.getByRole('combobox',{name:'搜索引用内容'}).fill('no-results')
+  await p.locator('.reference-picker-state').getByText('没有找到可引用的内容').waitFor()
+  await p.getByRole('combobox',{name:'搜索引用内容'}).fill('picker-error')
+  await p.getByText('文章暂时无法加载',{exact:true}).waitFor()
+  await p.locator('.reference-picker').getByRole('button',{name:'重试',exact:true}).click()
+  await p.locator('.reference-result').first().waitFor()
+  await p.getByRole('combobox',{name:'搜索引用内容'}).fill('slow')
+  await p.waitForRequest(r=>new URL(r.url()).pathname==='/api/articles'&&new URL(r.url()).searchParams.get('keyword')==='slow')
+  await p.getByRole('combobox',{name:'搜索引用内容'}).fill('no-results')
+  await p.locator('.reference-picker-state').getByText('没有找到可引用的内容').waitFor()
+  await p.waitForTimeout(700)
+  assert.equal(await p.locator('.reference-result').count(),0)
+  assert.equal(await p.locator('.cm-content').innerText(),sourceBeforeSearch)
+  await p.getByRole('combobox',{name:'搜索引用内容'}).fill('batch')
+  await p.locator('.reference-result').first().waitFor()
+  await wait(p)
+  await p.screenshot({path:output+'/mention-picker.png'})
+  await Promise.all([p.waitForRequest(r=>new URL(r.url()).pathname==='/api/articles'&&new URL(r.url()).searchParams.get('page')==='2'&&new URL(r.url()).searchParams.get('keyword')==='batch'),p.getByRole('button',{name:'下一页引用结果',exact:true}).click()])
+  await p.locator('.reference-result').first().waitFor()
+  await p.getByRole('button',{name:'上一页引用结果',exact:true}).click()
+  await p.locator('.reference-result').filter({hasText:'从源码理解依赖注入'}).waitFor()
+  await p.locator('.reference-result').first().click()
+  await p.locator('.cm-reference-token').filter({hasText:'从源码理解依赖注入'}).waitFor()
+  await p.keyboard.type('\n@batch')
+  await p.locator('.reference-result').first().waitFor()
+  await p.locator('.reference-picker').getByRole('button',{name:'知识卡片',exact:true}).click()
+  await p.locator('.reference-result').filter({hasText:'Filter'}).waitFor()
+  await p.getByRole('button',{name:'下一页引用结果',exact:true}).click()
+  await p.locator('.reference-result').filter({hasText:'知识概念 7'}).waitFor()
+  await p.getByRole('combobox',{name:'搜索引用内容'}).focus()
+  await p.keyboard.press('ArrowDown')
+  await p.keyboard.press('Enter')
+  await p.locator('.cm-reference-token.card').filter({hasText:'知识概念 7'}).waitFor()
+  for(const width of [1440,1024,768,390]) {
+    await p.setViewportSize({width,height:844})
+    await p.locator('.cm-content').click(); await p.keyboard.press('Control+End'); await p.keyboard.type('\n@batch')
+    await p.locator('.reference-result').first().waitFor()
+    await wait(p); await checkPicker(p)
+    await p.screenshot({path:`${output}/reference-picker-${width}.png`})
+    await p.keyboard.press('Escape')
+    assert.equal(await p.locator('.reference-picker').count(),0)
+  }
+  await p.setViewportSize({width:1440,height:1000})
+  await p.getByText('草稿已同步',{exact:true}).waitFor()
+  await p.goto(origin+'/#/articles/1?seriesId=1')
+  await p.locator('.document-article.current').waitFor()
+  await wait(p)
+  assert.deepEqual(await p.locator('.reader-cover .tech-badge').evaluateAll(nodes=>nodes.map(el=>getComputedStyle(el).backgroundColor)),badgeColors)
+  await p.locator('.reader-cover').getByRole('link',{name:'面向对象',exact:true}).click()
+  await p.waitForURL('**/#/articles?tagSlug=oop')
+  await p.locator('.toolbar .el-select .tech-badge').filter({hasText:'面向对象'}).waitFor()
+  await p.goto(origin+'/#/articles/1?seriesId=1')
+  await p.locator('.document-article.current').waitFor(); await wait(p)
+  assert.equal(await p.locator('.document-group[aria-expanded="true"]').count(),2)
+  assert.equal(await p.locator('.article-body h2[id]').count(),2)
+  const ids=await p.locator('.article-body h2').evaluateAll(nodes=>nodes.map(n=>n.id))
+  assert.notEqual(ids[0],ids[1])
+  await p.locator('.document-headings button').filter({hasText:'路由与控制器'}).click()
+  await wait(p)
+  assert(new URL(p.url()).hash.includes('heading='))
+  assert(await p.locator('.article-body h3').evaluate(el=>el.getBoundingClientRect().top>60))
+  await p.locator('.article-body [data-knowledge-card-id="1"]').hover()
+  await p.locator('.knowledge-card-hover-preview').waitFor()
+  await p.locator('.article-body [data-knowledge-card-id="1"]').click()
+  await p.locator('.knowledge-floating-window').waitFor()
+  await wait(p)
+  const first=p.locator('.knowledge-floating-window').first()
+  let b=await first.boundingBox()
+  await p.mouse.move(b.x+120,b.y+25); await p.mouse.down(); await p.mouse.move(30,110,{steps:12}); await p.mouse.up()
+  b=await first.boundingBox(); assert(b.x<150)
+  const handle=await first.locator('.knowledge-window-resizer').boundingBox()
+  await p.mouse.move(handle.x+10,handle.y+10);await p.mouse.down();await p.mouse.move(handle.x+85,handle.y+50,{steps:10});await p.mouse.up()
+  assert((await first.boundingBox()).width>b.width+30)
+  await p.locator('.article-body [data-knowledge-card-id="2"]').click()
+  assert.equal(await p.locator('.knowledge-floating-window').count(),2)
+  await wait(p); await p.screenshot({path:output+'/knowledge-windows.png'})
+  await p.locator('.knowledge-floating-window').last().getByRole('button',{name:'最大化窗口'}).click()
+  assert((await p.locator('.knowledge-floating-window').last().boundingBox()).width>1300)
+  await p.locator('.knowledge-floating-window').last().getByRole('button',{name:'还原窗口'}).click()
+  await p.locator('.knowledge-floating-window').last().getByRole('button',{name:'关闭知识卡片'}).click()
+  await first.getByRole('button',{name:'关闭知识卡片'}).click(); await wait(p)
+  await p.locator('.article-body [data-copy-code]').click()
+  assert.equal(await p.evaluate(()=>navigator.clipboard.readText()),'@RestController\nclass ArticleController {\n  public String get() { return "hello"; }\n}\n')
+  for(const width of (process.env.SKIP_VIEWPORTS ? [] : [1440,1024,768,390])) {
+    await p.setViewportSize({width,height:960})
+    for(const [name,path] of [['document','/articles/1?seriesId=1'],['editor','/articles/1/edit'],['library','/knowledge'],['profile','/me'],['users','/users'],['categories','/categories']]) {
+      await p.goto(origin+'/#'+path); await p.waitForLoadState('networkidle'); await wait(p); await checkWidth(p)
+      await p.screenshot({path:`${output}/${name}-${width}.png`})
+    }
+  }
+  await p.setViewportSize({width:1440,height:1000})
+  await p.goto(origin+'/#/articles/1/edit')
+  await p.getByLabel('文章摘要').fill('修改后的摘要')
+  await p.getByRole('button',{name:'保存修改',exact:true}).click()
+  await p.waitForURL('**/#/articles/1')
+  assert.equal(writes.find(w=>w.path==='/api/articles/1'&&w.method==='PUT').body.summary,'修改后的摘要')
+  await p.goto(origin+'/#/articles/1?seriesId=1')
+  await Promise.all([p.waitForRequest(r=>new URL(r.url()).pathname==='/api/articles/1/likes'&&r.method()==='POST'), p.getByRole('button',{name:'喜欢',exact:false}).first().click()])
+  assert(writes.some(w=>w.path==='/api/articles/1/likes'))
+  await p.getByPlaceholder('分享你的想法').fill('测试评论')
+  await Promise.all([p.waitForRequest(r=>new URL(r.url()).pathname==='/api/articles/1/comments'&&r.method()==='POST'), p.getByRole('button',{name:'发布',exact:true}).click()])
+  assert(writes.some(w=>w.path==='/api/articles/1/comments'))
+  await Promise.all([p.waitForRequest(r=>new URL(r.url()).pathname==='/api/articles/1/favorites'&&r.method()==='POST'), p.getByRole('button',{name:'收藏',exact:false}).first().click()])
+  assert(writes.some(w=>w.path==='/api/articles/1/favorites'))
+  await p.goto(origin+'/#/articles/1/edit')
+  await p.locator('.cm-content').click(); await p.keyboard.press('Control+End'); await p.keyboard.type('\nnew draft')
+  await p.waitForTimeout(1800)
+  assert(writes.some(w=>w.path==='/api/articles/1/draft'&&w.method==='PUT'))
+  await p.getByRole('button',{name:'版本历史',exact:true}).click()
+  await p.getByRole('button',{name:'恢复此版本',exact:true}).click()
+  await p.getByRole('button',{name:'确认恢复',exact:true}).click()
+  await wait(p)
+  assert(writes.some(w=>w.path==='/api/articles/1/revisions/1/restore'))
+  await p.goto(origin+'/#/collections?seriesId=1')
+  await p.getByRole('button',{name:'添加分组',exact:true}).click()
+  await p.locator('.el-dialog:visible input').first().fill('第二组')
+  await p.locator('.el-dialog:visible').getByRole('button',{name:'保存',exact:true}).click()
+  await wait(p)
+  assert(writes.some(w=>w.path==='/api/series/1/chapters'&&w.body.title==='第二组'))
+  await p.getByRole('button',{name:'分组上移',exact:true}).last().click()
+  await wait(p)
+  assert.deepEqual(writes.find(w=>w.path==='/api/series/1/chapters/order').body,{parentId:null,chapterIds:[12,10]})
+  await p.goto(origin+'/#/articles/1?seriesId=1')
+  await p.setViewportSize({width:390,height:844})
+  await p.getByRole('button',{name:'打开导航菜单'}).click()
+  assert.equal(await p.locator('.mobile-navigation:visible').count(),1)
+  assert.deepEqual(await p.locator('.mobile-navigation-group > p').allTextContents(),['浏览','文章分区','内容目录','账户'])
+  await wait(p)
+  await p.screenshot({path:output+'/mobile-navigation.png'})
+  await p.locator('.mobile-navigation').press('Escape')
+  await wait(p)
+  assert.equal(await p.locator('.mobile-navigation:visible').count(),0)
+  await p.locator('.document-mobile-toggle').click()
+  assert.equal(await p.locator('.document-navigation-content:visible').count(),1)
+  await p.locator('.document-headings button').first().click()
+  assert.equal(await p.locator('.document-navigation-content:visible').count(),0)
+  await p.emulateMedia({reducedMotion:'reduce'})
+  assert.equal(await p.locator('.site-header').evaluate(el=>getComputedStyle(el).transitionDuration),'1e-05s')
+  const publicContext=await browser.newContext({viewport:{width:1440,height:900}})
+  await publicContext.route('**/api/**',intercept)
+  const publicPage=await publicContext.newPage()
+  await publicPage.goto(origin+'/#/articles/1')
+  await publicPage.locator('.reader-cover h2').waitFor()
+  assert.equal(await publicPage.locator('.reader-more-button').count(),0)
+  await publicPage.getByRole('button',{name:'登录',exact:true}).click()
+  await publicPage.getByLabel('用户名',{exact:true}).fill('Jakin')
+  await publicPage.getByLabel('密码',{exact:true}).fill('test-password')
+  await publicPage.locator('.el-dialog:visible').getByRole('button',{name:'登录',exact:true}).click()
+  await publicPage.locator('.user-pill').waitFor()
+  assert.equal(await publicPage.locator('.topbar-actions').getByRole('button',{name:'登录',exact:true}).count(),0)
+  await publicContext.close()
+  const expired=await browser.newContext()
+  await expired.addInitScript(()=>localStorage.setItem('blog-studio-session',JSON.stringify({token:'expired',user:{id:1,username:'Jakin',role:'ADMIN'}})))
+  await expired.route('**/api/**',async route=>new URL(route.request().url()).pathname==='/api/auth/me'?route.fulfill({status:401,json:{error:'Unauthorized'}}):intercept(route))
+  const expiredPage=await expired.newPage(); await expiredPage.goto(origin+'/#/')
+  await expiredPage.getByRole('button',{name:'登录',exact:true}).waitFor()
+  assert.equal(await expiredPage.evaluate(()=>localStorage.getItem('blog-studio-session')),null)
+  await expired.close()
+  assert.deepEqual(errors,[])
+  console.log('PASS: four viewport sizes, hierarchical navigation, colored badges/filtering/navigation, reference picker positioning/search/type switch/pagination/keyboard/stale responses, global search, editor modes, nested directory, anchors, code copy, multiple movable/resizable cards, metadata save, draft autosave, revision restore, social actions, chapter ordering, mobile menus, reduced motion and sessions')
+  await context.close()
+} finally { await browser.close() }
