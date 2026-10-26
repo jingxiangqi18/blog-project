@@ -61,6 +61,6 @@ function handleKey(event) {
 }
 watch(() => route.fullPath, () => { menuOpen.value = false })
 watch(menuOpen, async open => { if (open) { await nextTick(); mobileNavigationRef.value?.querySelector('a')?.focus() } })
-onMounted(() => { loadSections(); window.addEventListener('keydown', handleKey) })
-onBeforeUnmount(() => window.removeEventListener('keydown', handleKey))
+onMounted(() => { loadSections(); window.addEventListener('keydown', handleKey); window.addEventListener('blog:sections-changed', loadSections) })
+onBeforeUnmount(() => { window.removeEventListener('keydown', handleKey); window.removeEventListener('blog:sections-changed', loadSections) })
 </script>

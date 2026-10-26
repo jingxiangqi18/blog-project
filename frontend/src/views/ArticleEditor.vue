@@ -16,7 +16,7 @@
     <el-alert
       v-if="categoriesLoaded && categories.length === 0"
       type="warning"
-      title="请先创建分类，再发布文章"
+      :title="isAdmin() ? '还没有分类，可以在发布设置中直接新建' : '还没有可用分类，请联系管理员创建'"
       show-icon
       :closable="false"
     />
@@ -35,6 +35,7 @@
       :model="form"
       :rules="rules"
       label-position="top"
+      @submit.prevent
     >
       <div ref="editorLayoutRef" class="editor-layout" :style="editorLayoutStyle">
         <div class="panel editor-writing-surface">
@@ -52,9 +53,9 @@
             <div class="markdown-editor">
               <div class="markdown-toolbar">
                 <div class="markdown-tools">
-                  <span class="editor-tool-group"><button class="editor-tool" title="标题" aria-label="插入标题" @mousedown.prevent @click.prevent="insertMarkdown('heading')"><Heading2 :size="17" /></button><button class="editor-tool" title="列表" aria-label="插入列表" @mousedown.prevent @click.prevent="insertMarkdown('list')"><ListIcon :size="17" /></button><button class="editor-tool" title="引用" aria-label="插入引用" @mousedown.prevent @click.prevent="insertMarkdown('quote')"><Quote :size="17" /></button></span>
-                  <span class="editor-tool-group"><button class="editor-tool" title="代码块" aria-label="插入代码块" @mousedown.prevent @click.prevent="insertMarkdown('code')"><Code2 :size="17" /></button><button class="editor-tool" title="图片" aria-label="插入图片" @mousedown.prevent @click.prevent="insertMarkdown('image')"><ImageIcon :size="17" /></button></span>
-                  <span class="editor-tool-group"><button class="editor-tool" title="链接文章" aria-label="链接文章" @mousedown.prevent @click.prevent="openReferenceDialog('article')"><Link2 :size="17" /></button><button class="editor-tool" title="知识卡片" aria-label="知识卡片" @mousedown.prevent @click.prevent="openReferenceDialog('card')"><Layers :size="17" /></button></span>
+                  <span class="editor-tool-group"><button type="button" class="editor-tool" title="标题" aria-label="插入标题" @mousedown.prevent @click.prevent="insertMarkdown('heading')"><Heading2 :size="17" /></button><button type="button" class="editor-tool" title="列表" aria-label="插入列表" @mousedown.prevent @click.prevent="insertMarkdown('list')"><ListIcon :size="17" /></button><button type="button" class="editor-tool" title="引用" aria-label="插入引用" @mousedown.prevent @click.prevent="insertMarkdown('quote')"><Quote :size="17" /></button></span>
+                  <span class="editor-tool-group"><button type="button" class="editor-tool" title="代码块" aria-label="插入代码块" @mousedown.prevent @click.prevent="insertMarkdown('code')"><Code2 :size="17" /></button><button type="button" class="editor-tool" title="图片" aria-label="插入图片" @mousedown.prevent @click.prevent="insertMarkdown('image')"><ImageIcon :size="17" /></button></span>
+                  <span class="editor-tool-group"><button type="button" class="editor-tool" title="链接文章" aria-label="链接文章" @mousedown.prevent @click.prevent="openReferenceDialog('article')"><Link2 :size="17" /></button><button type="button" class="editor-tool" title="知识卡片" aria-label="知识卡片" @mousedown.prevent @click.prevent="openReferenceDialog('card')"><Layers :size="17" /></button></span>
                 </div>
                 <FluidTabs v-model="editorMode" :items="editorModes" appearance="compact" label="编辑视图" />
               </div>
@@ -108,100 +109,76 @@
           <span></span>
         </button>
 
-        <aside class="panel editor-side-panel">
-          <div class="side-section side-section-heading">
-            <div>
-              <p class="section-kicker">Publish</p>
-              <h3>发布信息</h3>
-            </div>
-            <el-button v-if="isEdit" text :icon="DocumentCopy" @click="openRevisionHistory">
-              版本历史
-            </el-button>
-          </div>
+        <aside class="editor-side-panel" aria-label="发布设置">
+          <header class="publish-panel-header">
+            <span class="publish-panel-symbol"><SlidersHorizontal :size="18" /></span>
+            <div><span class="publish-panel-eyebrow">PUBLISH</span><h3>发布设置</h3></div>
+            <button v-if="isEdit" type="button" class="icon-button" title="版本历史" aria-label="版本历史" @click="openRevisionHistory"><History :size="17" /></button>
+          </header>
 
-          <el-form-item label="分区">
-            <el-select v-model="metadata.sectionId" clearable placeholder="未分区" class="full-width" @change="onSectionChange">
-              <el-option v-for="section in sectionOptions" :key="section.id" :label="section.name" :value="section.id" :disabled="section.enabled === false" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="分类" prop="categoryId">
-            <el-select v-model="form.categoryId" placeholder="选择分类" class="full-width">
-              <el-option
-                v-for="category in compatibleCategories"
-                :key="category.id"
-                :label="category.name"
-                :value="category.id"
-              />
-            </el-select>
-          </el-form-item>
+          <div class="publish-panel-scroll">
+            <section class="publish-field-group">
+              <h4 class="publish-group-title"><FolderOpen :size="14" />内容归属</h4>
+              <el-form-item class="publish-field">
+                <template #label><span>分区</span><button v-if="isAdmin()" class="metadata-add-button" type="button" title="新建分区" aria-label="新建分区" @click="openQuickCreate('section', $event)"><Plus :size="14" /></button></template>
+                <el-select ref="sectionSelectRef" v-model="metadata.sectionId" filterable clearable placeholder="未分区" aria-label="文章分区" popper-class="publish-select-menu" @change="onSectionChange">
+                  <el-option v-for="section in sectionOptions" :key="section.id" :label="section.name" :value="section.id" :disabled="section.enabled === false" />
+                  <template v-if="isAdmin()" #footer><button class="metadata-menu-create" type="button" @click="openQuickCreate('section', $event)"><Plus :size="15" /><span>新建分区</span><ArrowUpRight :size="14" /></button></template>
+                </el-select>
+              </el-form-item>
+              <el-form-item label="分类" prop="categoryId" class="publish-field">
+                <template #label><span>分类</span><button v-if="isAdmin()" class="metadata-add-button" type="button" title="新建分类" aria-label="新建分类" @click="openQuickCreate('category', $event)"><Plus :size="14" /></button></template>
+                <el-select ref="categorySelectRef" v-model="form.categoryId" filterable :validate-event="false" placeholder="选择分类" aria-label="文章分类" popper-class="publish-select-menu" @change="onCategoryChange">
+                  <el-option v-for="category in compatibleCategories" :key="category.id" :label="category.name" :value="category.id" />
+                  <template #empty><div class="metadata-menu-empty"><FolderOpen :size="22" /><span>暂无匹配分类</span></div></template>
+                  <template v-if="isAdmin()" #footer><button class="metadata-menu-create" type="button" @click="openQuickCreate('category', $event)"><Plus :size="15" /><span>新建分类</span><ArrowUpRight :size="14" /></button></template>
+                </el-select>
+              </el-form-item>
+              <el-form-item label="所属系列" class="publish-field">
+                <template #label><span>所属系列<small>可选</small></span><button v-if="isSignedIn()" class="metadata-add-button" type="button" title="新建系列" aria-label="新建系列" @click="openQuickCreate('series', $event)"><Plus :size="14" /></button></template>
+                <el-select ref="seriesSelectRef" v-model="publishSeriesIds" multiple filterable remote :remote-method="searchPublishSeries" :loading="publishSeriesLoading" placeholder="搜索系列" aria-label="所属系列" popper-class="publish-select-menu">
+                  <template v-if="publishSeriesError" #header><div class="metadata-select-error"><span>系列加载失败</span><button type="button" @click="searchPublishSeries(publishSeriesKeyword)">重试</button></div></template>
+                  <el-option v-for="series in publishSeriesOptions" :key="series.id" :label="series.title" :value="series.id" :disabled="!canManageResource(series) || (!!metadata.sectionId && series.sectionId !== metadata.sectionId)"><span class="series-select-option"><Library :size="14" /><span>{{ series.title }}</span><small>{{ series.sectionName }}</small></span></el-option>
+                  <template #empty><div v-if="!publishSeriesError" class="metadata-menu-empty"><Library :size="22" /><span>暂无匹配系列</span></div></template>
+                  <template v-if="isSignedIn()" #footer><button class="metadata-menu-create" type="button" @click="openQuickCreate('series', $event)"><Plus :size="15" /><span>新建系列</span><ArrowUpRight :size="14" /></button></template>
+                </el-select>
+              </el-form-item>
+            </section>
 
-          <el-form-item label="标签">
-            <el-select v-model="metadata.tagIds" multiple filterable :multiple-limit="50" placeholder="选择标签" class="full-width">
-              <el-option v-for="tag in tags" :key="tag.id" :label="tag.name" :value="tag.id"><TechBadge :tag="tag" /></el-option>
-            </el-select>
-          </el-form-item>
-          <el-form-item label="所属系列">
-            <el-select v-model="publishSeriesIds" multiple filterable remote :remote-method="searchPublishSeries" :loading="publishSeriesLoading" placeholder="搜索系列" class="full-width">
-              <el-option v-for="series in publishSeriesOptions" :key="series.id" :label="series.title" :value="series.id" :disabled="!canManageResource(series) || (!!metadata.sectionId && series.sectionId !== metadata.sectionId)" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="内容类型">
-            <el-input v-model="metadata.contentType" maxlength="50" placeholder="general" />
-          </el-form-item>
-          <el-form-item label="文章摘要">
-            <el-input v-model="metadata.summary" type="textarea" :rows="3" maxlength="500" show-word-limit />
-          </el-form-item>
-          <p v-if="metadataDirty" class="metadata-pending" role="status">组织信息待保存，发布或保存修改后生效。</p>
+            <section class="publish-field-group publish-tags-group">
+              <h4 class="publish-group-title"><Tags :size="14" />标签<span class="publish-selection-count">{{ metadata.tagIds.length }} / 50</span><button v-if="isAdmin()" class="metadata-add-button" type="button" title="新建标签" aria-label="新建标签" :disabled="metadata.tagIds.length >= 50" @click="openQuickCreate('tag', $event)"><Plus :size="14" /></button></h4>
+              <el-select ref="tagSelectRef" v-model="metadata.tagIds" multiple filterable :multiple-limit="50" :filter-method="filterTags" placeholder="搜索或选择标签" aria-label="文章标签" popper-class="publish-select-menu" @visible-change="visible => { if (!visible) tagKeyword = '' }">
+                <el-option v-for="tag in filteredTags" :key="tag.id" :label="tag.name" :value="tag.id"><TechBadge :tag="tag" /></el-option>
+                <template #tag="{ data, deleteTag }"><TransitionGroup name="publish-tag" tag="div" class="publish-selected-tags"><span v-for="item in data" :key="item.value" class="publish-selected-tag"><TechBadge :tag="tags.find(tag => tag.id === item.value) || { name: item.currentLabel }" /><button type="button" :aria-label="`移除标签 ${item.currentLabel}`" :title="`移除 ${item.currentLabel}`" @click.stop="deleteTag($event, item)"><X :size="12" /></button></span></TransitionGroup></template>
+                <template #empty><div class="metadata-menu-empty"><Tags :size="22" /><span>暂无匹配标签</span></div></template>
+                <template v-if="isAdmin()" #footer><button class="metadata-menu-create" type="button" :disabled="metadata.tagIds.length >= 50" @click="openQuickCreate('tag', $event)"><Plus :size="15" /><span>{{ tagKeyword.trim() ? `新建“${tagKeyword.trim()}”` : '新建标签' }}</span><ArrowUpRight :size="14" /></button></template>
+              </el-select>
+            </section>
 
-          <section class="draft-control-card" :class="draftStatus">
-            <div class="draft-control-copy">
-              <span class="draft-control-icon">
-                <el-icon><Clock /></el-icon>
-              </span>
-              <div>
-                <strong>{{ draftControlTitle }}</strong>
-                <small>{{ draftControlMeta }}</small>
+            <section class="publish-field-group publish-details">
+              <button class="publish-details-trigger" type="button" :aria-expanded="detailsOpen" aria-controls="publish-details" @click="detailsOpen = !detailsOpen"><span><TextAlignStart :size="14" />摘要与更多</span><span><i v-if="metadata.summary" class="metadata-filled-dot" /><ChevronDown :size="15" /></span></button>
+              <div id="publish-details" class="publish-details-expansion" :class="{ 'is-open': detailsOpen }" :inert="!detailsOpen">
+                <div><div class="publish-details-fields">
+                  <el-form-item label="文章摘要"><el-input v-model="metadata.summary" type="textarea" :rows="4" maxlength="500" show-word-limit placeholder="文章摘要" aria-label="文章摘要" /></el-form-item>
+                  <el-form-item label="内容类型"><el-input v-model="metadata.contentType" maxlength="50" placeholder="general" aria-label="内容类型" /></el-form-item>
+                </div></div>
               </div>
-            </div>
-            <div class="draft-control-actions">
-              <el-button
-                :icon="Check"
-                :loading="isDraftSaving"
-                :disabled="!canSaveDraft"
-                @click="saveDraftNow"
-              >
-                {{ hasSavedDraft ? '立即同步' : '保存草稿' }}
-              </el-button>
-              <el-button
-                v-if="hasSavedDraft"
-                text
-                type="danger"
-                :icon="Delete"
-                :loading="discardingDraft"
-                :disabled="isDraftSaving || saving"
-                @click="discardDraft"
-              >
-                放弃草稿
-              </el-button>
-            </div>
-          </section>
+            </section>
 
-          <div class="writer-stats">
-            <div>
-              <el-icon><Reading /></el-icon>
-              <span>{{ contentLength }} 字符</span>
-            </div>
-            <div>
-              <el-icon><Stopwatch /></el-icon>
-              <span>约 {{ estimatedMinutes }} 分钟读完</span>
-            </div>
-            <div>
-              <el-icon><CollectionTag /></el-icon>
-              <span>{{ categories.length }} 个分类</span>
-            </div>
+            <section class="draft-control-card" :class="draftStatus" aria-live="polite">
+              <div class="draft-control-copy">
+                <span class="draft-control-icon"><LoaderCircle v-if="isDraftSaving" :size="16" class="draft-sync-spinner" /><CloudCheck v-else-if="hasSavedDraft && draftStatus === 'saved'" :size="16" /><CloudAlert v-else-if="draftStatus === 'error'" :size="16" /><Cloud :size="16" v-else /></span>
+                <div><Transition name="draft-status" mode="out-in"><strong :key="draftControlTitle">{{ draftControlTitle }}</strong></Transition><small>{{ draftControlMeta }}</small></div>
+                <button class="icon-button draft-sync-action" type="button" :disabled="!canSaveDraft" :title="hasSavedDraft ? '立即同步草稿' : '保存草稿'" :aria-label="hasSavedDraft ? '立即同步草稿' : '保存草稿'" @click="saveDraftNow"><RefreshCw :size="15" /></button>
+              </div>
+              <button v-if="hasSavedDraft" class="draft-discard-action" type="button" :disabled="discardingDraft || isDraftSaving || saving" @click="discardDraft"><Trash2 :size="12" />放弃草稿</button>
+            </section>
+            <div class="writer-stats"><span><BookOpen :size="12" />{{ contentLength }} 字符</span><span><Clock3 :size="12" />{{ estimatedMinutes }} 分钟阅读</span></div>
           </div>
 
-          <div class="editor-actions">
+          <footer class="publish-panel-footer">
+            <Transition name="publish-notice"><p v-if="metadataDirty" class="metadata-pending" role="status"><span />发布时保存组织信息</p></Transition>
+            <div class="editor-actions">
             <el-button :disabled="saving" @click="$router.back()">取消</el-button>
             <el-button
               type="primary"
@@ -212,10 +189,13 @@
             >
               {{ isEdit ? '保存修改' : '发布文章' }}
             </el-button>
-          </div>
+            </div>
+          </footer>
         </aside>
       </div>
     </el-form>
+
+    <EditorMetadataCreate v-model="quickCreateOpen" :kind="quickCreateKind" :initial-name="quickCreateName" :section-id="metadata.sectionId" :category-id="form.categoryId" :sections="sectionOptions" :categories="categories" :tags="tags" :series="publishSeriesOptions" @created="onMetadataCreated" @closed="restoreCreateFocus" />
 
     <el-dialog
       v-model="referenceDialogOpen"
@@ -368,26 +348,21 @@
 
 <script setup>
 import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { Code2, Columns2, Eye, Heading2, Image as ImageIcon, Layers, Link2, List as ListIcon, Pencil, Quote } from '@lucide/vue'
+import { ArrowUpRight, BookOpen, ChevronDown, Clock3, Cloud, CloudAlert, CloudCheck, Code2, Columns2, Eye, FolderOpen, Heading2, History, Image as ImageIcon, Layers, Library, Link2, List as ListIcon, LoaderCircle, Pencil, Plus, Quote, RefreshCw, SlidersHorizontal, Tags, TextAlignStart, Trash2, X } from '@lucide/vue'
 import FluidTabs from '../components/FluidTabs.vue'
 import TechBadge from '../components/TechBadge.vue'
+import EditorMetadataCreate from '../components/EditorMetadataCreate.vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Back,
-  ChatLineRound,
   Check,
-  CollectionTag,
   Clock,
-  Delete,
-  DocumentCopy,
   Link,
   Notebook,
-  Reading,
   Refresh,
   RefreshLeft,
   Search,
-  Stopwatch,
 } from '@element-plus/icons-vue'
 import {
   createArticle,
@@ -415,7 +390,7 @@ import {
   updateArticleDraft,
 } from '../api/blog'
 import { sessionState } from '../state/session'
-import { canManageResource, currentUserId, isSignedIn } from '../utils/permissions'
+import { canManageResource, currentUserId, isAdmin, isSignedIn } from '../utils/permissions'
 import { markdownToPlainText, renderMarkdown } from '../utils/markdown'
 import MarkdownMentionEditor from '../components/MarkdownMentionEditor.vue'
 
@@ -439,20 +414,71 @@ const publishSeriesIds = ref([])
 const originalSeries = ref([])
 const publishSeriesOptions = ref([])
 const publishSeriesLoading = ref(false)
+const publishSeriesError = ref(false)
+const publishSeriesKeyword = ref('')
 const seriesDirty = computed(() => [...publishSeriesIds.value].sort().join(',') !== originalSeries.value.map(s => s.id).sort().join(','))
 let publishSeriesRequest = 0
 async function searchPublishSeries(keyword = '') {
   const request = ++publishSeriesRequest
+  publishSeriesKeyword.value = keyword
+  publishSeriesError.value = false
   publishSeriesLoading.value = true
   try {
     const result = await listSeries({ keyword, page: 1, size: 50 })
     if (request !== publishSeriesRequest) return
     const options = new Map([...originalSeries.value, ...publishSeriesOptions.value.filter(s => publishSeriesIds.value.includes(s.id)), ...result.content].map(s => [s.id, s]))
     publishSeriesOptions.value = [...options.values()]
-  } catch { ElMessage.warning('系列列表加载失败，请重试') }
+  } catch {
+    if (request === publishSeriesRequest) {
+      publishSeriesOptions.value = publishSeriesOptions.value.filter(series => publishSeriesIds.value.includes(series.id))
+      publishSeriesError.value = true
+    }
+  }
   finally { if(request === publishSeriesRequest) publishSeriesLoading.value = false }
 }
 const metadata = reactive({ sectionId: null, summary: '', contentType: 'general', tagIds: [] })
+const detailsOpen = ref(false)
+const tagKeyword = ref('')
+const filteredTags = computed(() => tags.value.filter(tag => `${tag.name} ${tag.slug}`.toLocaleLowerCase().includes(tagKeyword.value.trim().toLocaleLowerCase())))
+function filterTags(value) { tagKeyword.value = value }
+const sectionSelectRef = ref(null), categorySelectRef = ref(null), tagSelectRef = ref(null), seriesSelectRef = ref(null)
+const quickCreateOpen = ref(false), quickCreateKind = ref('tag'), quickCreateName = ref('')
+let quickCreateTrigger = null
+function openQuickCreate(kind, event) {
+  if (!(kind === 'series' ? isSignedIn() : isAdmin())) return
+  if (kind === 'tag' && metadata.tagIds.length >= 50) return
+  quickCreateName.value = kind === 'tag' ? tagKeyword.value.trim() : kind === 'series' ? publishSeriesKeyword.value.trim() : ''
+  quickCreateKind.value = kind
+  quickCreateTrigger = event?.currentTarget
+  const selects = { section: sectionSelectRef, category: categorySelectRef, tag: tagSelectRef, series: seriesSelectRef }
+  selects[kind]?.value?.blur()
+  quickCreateOpen.value = true
+}
+function restoreCreateFocus() {
+  const labels = { tag: '标签', category: '分类', section: '分区', series: '系列' }
+  const labelButton = document.querySelector(`.editor-side-panel .metadata-add-button[aria-label="新建${labels[quickCreateKind.value]}"]`)
+  if (labelButton) labelButton.focus({ preventScroll: true })
+  else if (quickCreateTrigger?.isConnected && !quickCreateTrigger.closest('[aria-hidden="true"]')) quickCreateTrigger.focus()
+}
+function onMetadataCreated({ kind, item }) {
+  if (!canSubmitArticle.value) return
+  const target = { section: sections, category: categories, tag: tags, series: publishSeriesOptions }[kind]
+  target.value = [...target.value.filter(option => option.id !== item.id), item]
+  if (kind === 'section') {
+    metadata.sectionId = item.id
+    onSectionChange()
+    window.dispatchEvent(new CustomEvent('blog:sections-changed'))
+  } else if (kind === 'category') {
+    form.categoryId = item.id
+    onCategoryChange()
+    formRef.value?.clearValidate('categoryId')
+  } else if (kind === 'tag') {
+    if (!metadata.tagIds.includes(item.id) && metadata.tagIds.length < 50) metadata.tagIds.push(item.id)
+  } else {
+    if (!metadata.sectionId) { metadata.sectionId = item.sectionId; onSectionChange() }
+    if (!publishSeriesIds.value.includes(item.id)) publishSeriesIds.value.push(item.id)
+  }
+}
 const savedMetadata = ref(JSON.stringify(metadata))
 const metadataDirty = computed(() => JSON.stringify(metadata) !== savedMetadata.value || seriesDirty.value)
 const compatibleCategories = computed(() => categories.value.filter(c => !metadata.sectionId || !c.sectionId || c.sectionId === metadata.sectionId))
@@ -464,7 +490,15 @@ const sectionOptions = computed(() => {
   return options
 })
 function onSectionChange() {
-  if (!compatibleCategories.value.some(c => c.id === form.categoryId)) form.categoryId = ''
+  if (!compatibleCategories.value.some(c => c.id === form.categoryId)) {
+    form.categoryId = ''
+    nextTick(() => formRef.value?.clearValidate('categoryId'))
+  }
+}
+function onCategoryChange() {
+  const category = categories.value.find(item => item.id === form.categoryId)
+  if (!metadata.sectionId && category?.sectionId) metadata.sectionId = category.sectionId
+  if (category) formRef.value?.clearValidate('categoryId')
 }
 function applyMetadata(article) {
   Object.assign(metadata, { sectionId: article.sectionId || null, summary: article.summary || '', contentType: article.contentType || 'general', tagIds: article.tagIds || article.tags?.map(t => t.id) || [] })
@@ -477,7 +511,7 @@ const previewPaneRef = ref(null)
 const markdownWorkspaceRef = ref(null)
 const editorLayoutRef = ref(null)
 const editorPanePercent = ref(50)
-const sidePanelWidth = ref(260)
+const sidePanelWidth = ref(320)
 const sourceArticle = ref(null)
 const draftId = ref(null)
 const draftStatus = ref('saved')
@@ -591,6 +625,15 @@ const workspaceStyle = computed(() => {
 const editorLayoutStyle = computed(() => ({
   '--editor-side-width': `${sidePanelWidth.value}px`,
 }))
+
+watch(editorMode, async () => {
+  await nextTick()
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  markdownWorkspaceRef.value?.querySelectorAll('.markdown-pane').forEach(pane => {
+    pane.getAnimations().forEach(animation => animation.cancel())
+    if (pane.offsetWidth) pane.animate([{ opacity: .35, transform: 'translateY(5px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 260, easing: 'cubic-bezier(.22, 1, .36, 1)' })
+  })
+})
 const referenceDialogTitle = computed(() => {
   return referenceType.value === 'article' ? '链接站内文章' : '关联知识卡片'
 })
@@ -1192,7 +1235,7 @@ function startLayoutResize(event) {
 
   function resize(pointerEvent) {
     const nextWidth = rect.right - pointerEvent.clientX
-    sidePanelWidth.value = Math.min(360, Math.max(220, Math.round(nextWidth)))
+    sidePanelWidth.value = Math.min(420, Math.max(280, Math.round(nextWidth)))
   }
 
   function stop() {
@@ -1340,7 +1383,8 @@ async function submit() {
     return
   }
 
-  await formRef.value.validate()
+  const valid = await formRef.value.validate().catch(() => false)
+  if (!valid) return
 
   if (!compatibleCategories.value.some(c => c.id === Number(form.categoryId))) {
     ElMessage.warning('请选择与当前分区匹配的分类')
