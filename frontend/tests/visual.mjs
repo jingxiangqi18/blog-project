@@ -265,7 +265,8 @@ try {
   }
   await p.setViewportSize({width:1440,height:1000})
   await p.goto(origin+'/#/articles/1/edit')
-  await p.getByLabel('文章摘要').fill('修改后的摘要')
+  await p.getByRole('button',{name:'摘要与更多',exact:true}).click()
+  await p.getByRole('textbox',{name:'文章摘要',exact:true}).fill('修改后的摘要')
   await p.getByRole('button',{name:'保存修改',exact:true}).click()
   await p.waitForURL('**/#/articles/1')
   assert.equal(writes.find(w=>w.path==='/api/articles/1'&&w.method==='PUT').body.summary,'修改后的摘要')
